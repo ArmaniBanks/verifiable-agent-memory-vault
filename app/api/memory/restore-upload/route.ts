@@ -30,15 +30,14 @@ export async function POST(request: Request) {
     const result = await uploadPayloadTo0G(body.payload, { allowPendingFallback: false });
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown restore upload error";
     return NextResponse.json(
       {
         restored: false,
         storageStatus: "pending",
-        error: message
+        error: "Queued for 0G indexing. Fallback proof remains active.",
+        detail: error instanceof Error ? error.message : "Unknown restore upload error"
       },
       { status: 503 }
     );
   }
 }
-

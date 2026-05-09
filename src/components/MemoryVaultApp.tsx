@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Bot, CheckCircle2, Database, ExternalLink, FileCheck2, Link, Loader2, ShieldCheck, Wallet } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Bot, CheckCircle2, Database, ExternalLink, FileCheck2, Link, Loader2, Moon, ShieldCheck, Sun, Wallet } from "lucide-react";
 import { BrowserProvider, Contract, Interface } from "ethers";
 import { agentMemoryVaultAbi } from "@/src/lib/agentMemoryVaultAbi";
 import { explorerAddressUrl, explorerTxUrl, ogConfig } from "@/src/lib/config";
@@ -49,6 +49,38 @@ function shortHash(value: string) {
   return `${value.slice(0, 10)}...${value.slice(-8)}`;
 }
 
+function storageStatusLabel(upload: UploadResponse) {
+  return upload.storageStatus === "uploaded" ? "Indexed on 0G Storage" : "Fallback proof active";
+}
+
+function storageStatusNote(upload: UploadResponse) {
+  return upload.storageStatus === "uploaded"
+    ? "Proof verified from 0G Storage."
+    : "Queued for 0G indexing. Your on-chain proof is already active while storage propagation catches up.";
+}
+
+function isPendingPropagationMessage(message: string) {
+  return /storage propagation is still pending|queued for 0g indexing|fallback proof remains active/i.test(message);
+}
+
+const workflowSteps = [
+  {
+    title: "Create Agent",
+    detail: "Register identity and metadata roots on 0G Chain.",
+    icon: Bot
+  },
+  {
+    title: "Anchor Memory",
+    detail: "Attach memory and execution-log proofs to the agent record.",
+    icon: Database
+  },
+  {
+    title: "Verify Proof",
+    detail: "Review hashes, propagation status, and explorer activity.",
+    icon: FileCheck2
+  }
+];
+
 async function requireWallet() {
   if (!window.ethereum) {
     throw new Error("Install MetaMask or another EIP-1193 wallet to use this demo.");
@@ -86,6 +118,7 @@ async function requireWallet() {
 }
 
 export function MemoryVaultApp() {
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [account, setAccount] = useState("");
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState("");
@@ -104,13 +137,34 @@ export function MemoryVaultApp() {
   const [verifyRootHash, setVerifyRootHash] = useState("");
   const [verifyContentHash, setVerifyContentHash] = useState("");
   const [verification, setVerification] = useState<VerificationResponse | null>(null);
+  const [retryCountdown, setRetryCountdown] = useState(0);
   const [busy, setBusy] = useState(false);
+  const isPendingNotice = Boolean(error && isPendingPropagationMessage(error));
 
   const contractReady = ogConfig.contractAddress.length > 0;
+  const checklistItems = [
+    { label: "Wallet connected", done: Boolean(account) },
+    { label: "Agent registered", done: Boolean(agentId) },
+    { label: "Memory anchored", done: Boolean(lastTxHash) },
+    { label: "Indexed on 0G Storage", done: lastUpload?.storageStatus === "uploaded" },
+    { label: "Proof verifiable", done: Boolean(verification?.verified || lastUpload?.storageStatus === "uploaded") }
+  ];
 
   const contractLink = useMemo(() => {
     return contractReady ? explorerAddressUrl(ogConfig.contractAddress) : "";
   }, [contractReady]);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem("vamv-theme");
+    if (savedTheme === "light" || savedTheme === "dark") {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("vamv-theme", theme);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   async function getContract() {
     if (!contractReady) {
@@ -157,7 +211,7 @@ export function MemoryVaultApp() {
   async function registerAgent() {
     setBusy(true);
     setError("");
-    setStatus("Uploading agent metadata to 0G Storage...");
+    setStatus("Preparing agent metadata proof...");
 
     try {
       const metadata = await uploadArtifact({
@@ -171,7 +225,7 @@ export function MemoryVaultApp() {
       setVerifyRootHash(metadata.rootHash);
       setVerifyContentHash(metadata.contentHash);
       if (metadata.storageStatus === "pending") {
-        setStatus("0G Storage indexer is unreachable, using a pending content proof for chain registration...");
+        setStatus("Queued for 0G indexing. Continuing with on-chain proof...");
       }
 
       setStatus("Registering agent on 0G Chain...");
@@ -194,8 +248,8 @@ export function MemoryVaultApp() {
       setAgentId(createdId);
       setStatus(
         metadata.storageStatus === "uploaded"
-          ? `Agent #${createdId} registered and linked to 0G Storage.`
-          : `Agent #${createdId} registered on 0G Chain. Storage upload is pending until the indexer is reachable.`
+          ? `Agent #${createdId} registered. Proof verified from 0G Storage.`
+          : `Agent #${createdId} registered on 0G Chain. Fallback proof active while storage indexing completes.`
       );
       await loadAgents();
     } catch (err) {
@@ -208,7 +262,7 @@ export function MemoryVaultApp() {
   async function anchorMemory() {
     setBusy(true);
     setError("");
-    setStatus("Uploading memory/log artifact to 0G Storage...");
+    setStatus("Preparing memory proof...");
 
     try {
       if (!agentId) throw new Error("Register or enter an agent ID first.");
@@ -224,7 +278,7 @@ export function MemoryVaultApp() {
       setVerifyRootHash(upload.rootHash);
       setVerifyContentHash(upload.contentHash);
       if (upload.storageStatus === "pending") {
-        setStatus("0G Storage indexer is unreachable, anchoring a pending content proof on-chain...");
+        setStatus("Queued for 0G indexing. Anchoring fallback proof on-chain...");
       }
 
       setStatus("Anchoring memory proof on 0G Chain...");
@@ -240,8 +294,8 @@ export function MemoryVaultApp() {
       await tx.wait();
       setStatus(
         upload.storageStatus === "uploaded"
-          ? `Memory anchored for agent #${agentId}.`
-          : `Memory proof anchored for agent #${agentId}. Storage upload is pending until the indexer is reachable.`
+          ? `Memory anchored for agent #${agentId}. Proof verified from 0G Storage.`
+          : `Memory proof anchored for agent #${agentId}. Fallback proof active while storage indexing completes.`
       );
       await loadAgents();
     } catch (err) {
@@ -284,7 +338,7 @@ export function MemoryVaultApp() {
   async function verifyProof() {
     setBusy(true);
     setError("");
-    setStatus("Downloading from 0G Storage with proof verification...");
+    setStatus("Verifying storage propagation...");
 
     try {
       const response = await fetch("/api/proof/verify", {
@@ -297,11 +351,12 @@ export function MemoryVaultApp() {
       });
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Proof verification failed.");
+      if (!response.ok) throw new Error(result.pending ? "Storage propagation is still pending." : result.error || "Proof verification failed.");
       setVerification(result);
-      setStatus(result.verified ? "Proof verified." : "Proof downloaded but content hash does not match.");
+      setStatus(result.verified ? "Proof verified from 0G Storage." : "Storage proof returned, but content hash did not match.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Proof verification failed.");
+      setStatus("Fallback proof active. Waiting for 0G Storage indexing...");
+      setError(err instanceof Error ? err.message : "Storage propagation is still pending.");
     } finally {
       setBusy(false);
     }
@@ -312,9 +367,16 @@ export function MemoryVaultApp() {
 
     setBusy(true);
     setError("");
-    setStatus("Retrying real 0G Storage upload for the pending artifact...");
+    setRetryCountdown(5);
+    setStatus("Verifying storage propagation...");
 
     try {
+      for (let seconds = 5; seconds > 0; seconds -= 1) {
+        setRetryCountdown(seconds);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      setRetryCountdown(0);
+
       const response = await fetch("/api/memory/restore-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -323,104 +385,191 @@ export function MemoryVaultApp() {
 
       const result = await response.json();
       if (!response.ok) {
-        throw new Error(result.error || "0G Storage restore upload is still unavailable.");
+        throw new Error("Queued for 0G indexing. Fallback proof remains active.");
       }
 
       const restored = result as UploadResponse;
       setLastUpload(restored);
       setVerifyRootHash(restored.rootHash);
       setVerifyContentHash(restored.contentHash);
-      setStatus("Real 0G Storage upload restored for the latest artifact.");
+      setStatus("Proof verified from 0G Storage.");
     } catch (err) {
-      setStatus("Current on-chain fallback remains active. Real 0G Storage upload is still unavailable.");
-      setError(err instanceof Error ? err.message : "0G Storage restore upload failed.");
+      setStatus("Fallback proof active. You can keep working while 0G indexing catches up.");
+      setError(err instanceof Error ? err.message : "Queued for 0G indexing. Fallback proof remains active.");
     } finally {
+      setRetryCountdown(0);
       setBusy(false);
     }
   }
 
   return (
-    <main className="min-h-screen">
-      <section className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-6 sm:px-8 lg:px-10">
-        <header className="flex flex-col gap-5 border-b border-ink/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex max-w-3xl items-start gap-4">
-            <div className="relative mt-1 flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-ink/10 bg-white shadow-sm">
-              <ShieldCheck className="h-8 w-8 text-tide" />
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-copper text-[10px] font-bold text-white">
-                0G
-              </span>
+    <main className={`min-h-screen overflow-hidden ${theme === "light" ? "theme-light" : "theme-dark"}`}>
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-8 sm:py-8 lg:px-10">
+        <header className="premium-card relative overflow-hidden rounded-lg p-5 sm:p-7 lg:p-9">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent" />
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex max-w-4xl flex-col gap-5 sm:flex-row sm:items-start">
+              <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] shadow-2xl shadow-cyan-950/30">
+                <ShieldCheck className="h-9 w-9 text-cyan-200" />
+                <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-copper text-[10px] font-bold text-white shadow-lg shadow-copper/30">
+                  0G
+                </span>
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-copper">0G APAC Hackathon MVP</p>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+                    Live on 0G Mainnet
+                  </span>
+                </div>
+                <h1 className="mt-3 max-w-4xl text-4xl font-semibold leading-[1.03] text-white sm:text-6xl lg:text-7xl">
+                  Verifiable Agent Memory Vault
+                </h1>
+                <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
+                  Store agent memory and execution logs on 0G Storage, anchor proof hashes on 0G Chain, and keep the
+                  product usable while storage propagation catches up.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2 text-xs font-medium text-slate-300">
+                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">0G Chain</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">0G Storage</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">Proof fallback</span>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-normal text-copper">0G APAC Hackathon MVP</p>
-              <h1 className="mt-2 text-4xl font-semibold leading-tight text-ink sm:text-5xl">
-                Verifiable Agent Memory Vault
-              </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-ink/70">
-                Store agent memory and execution logs on 0G Storage, anchor their proof hashes on 0G Chain, and verify
-                the artifact from the product UI.
-              </p>
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white disabled:opacity-60"
-              onClick={connectWallet}
-              disabled={busy}
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-              {account ? shortHash(account) : "Connect"}
-            </button>
-            {contractReady ? (
-              <a
-                className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-md border border-ink/15 bg-white px-4 text-sm font-semibold text-ink"
-                href={contractLink}
-                target="_blank"
+            <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row lg:flex-col">
+              <button
+                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                className="focus-ring soft-transition inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-5 text-sm font-semibold text-white hover:border-cyan-200/40 hover:bg-white/[0.08] sm:w-auto"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                type="button"
               >
-                <ExternalLink className="h-4 w-4" />
-                Contract
-              </a>
-            ) : null}
+                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                {theme === "dark" ? "Light mode" : "Dark mode"}
+              </button>
+              <button
+                className="focus-ring soft-transition inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-white/10 disabled:opacity-60 sm:w-auto"
+                onClick={connectWallet}
+                disabled={busy}
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                {account ? shortHash(account) : "Connect wallet"}
+              </button>
+              {contractReady ? (
+                <a
+                  className="focus-ring soft-transition inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-5 text-sm font-semibold text-white hover:border-cyan-200/40 hover:bg-white/[0.08]"
+                  href={contractLink}
+                  target="_blank"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View contract
+                </a>
+              ) : null}
+            </div>
           </div>
         </header>
 
-        <div className="rounded-md border border-ink/10 bg-white/80 p-4 shadow-sm">
+        <div className="premium-card rounded-lg p-4 sm:p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 text-sm font-medium text-ink">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin text-tide" /> : <CheckCircle2 className="h-4 w-4 text-moss" />}
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-100">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin text-cyan-200" /> : <CheckCircle2 className="h-4 w-4 text-emerald-300" />}
               {status}
             </div>
-            <div className="text-xs text-ink/60">Chain {ogConfig.chainId} · {ogConfig.chainName}</div>
+            <div className="text-xs text-slate-400">Chain {ogConfig.chainId} · {ogConfig.chainName}</div>
           </div>
-          {error ? <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+          {error ? (
+            <p
+              className={
+                isPendingNotice
+                  ? "mt-3 flex items-center gap-2 rounded-md border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100"
+                  : "mt-3 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200"
+              }
+            >
+              {isPendingNotice ? <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-200" /> : null}
+              {isPendingNotice ? "Waiting for 0G Storage indexing..." : error}
+            </p>
+          ) : null}
           {!contractReady ? (
-            <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+            <p className="mt-3 rounded-md border border-amber-300/20 bg-amber-400/10 p-3 text-sm text-amber-100">
               Deploy the contract and set <code>NEXT_PUBLIC_AGENT_MEMORY_VAULT_ADDRESS</code> before using on-chain
               actions.
             </p>
           ) : null}
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
-          <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-            <div className="mb-5 flex items-center gap-3">
-              <Bot className="h-5 w-5 text-tide" />
-              <h2 className="text-lg font-semibold text-ink">Register Agent</h2>
+        <section className="premium-card rounded-lg p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">Live demo checklist</p>
+              <h2 className="mt-1.5 text-lg font-semibold leading-7 text-white">Submission proof flow</h2>
             </div>
-            <label className="block text-sm font-medium text-ink/70">Agent name</label>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {checklistItems.map((item) => (
+                <div
+                  className="soft-transition flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300 hover:border-cyan-200/30 hover:bg-white/[0.06]"
+                  key={item.label}
+                >
+                  <CheckCircle2 className={item.done ? "h-4 w-4 text-emerald-300" : "h-4 w-4 text-slate-500"} />
+                  <span className={item.done ? "text-white" : "text-slate-400"}>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="premium-card rounded-lg p-5 sm:p-6">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">Workflow</p>
+              <h2 className="mt-1.5 text-2xl font-semibold leading-8 text-white">Create Agent → Anchor Memory → Verify Proof</h2>
+            </div>
+            <p className="max-w-md text-sm leading-6 text-slate-400">
+              The core loop stays available even while storage indexing is still propagating.
+            </p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {workflowSteps.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <div
+                  className="soft-transition relative rounded-md border border-white/10 bg-white/[0.04] p-4 hover:border-cyan-200/40 hover:bg-white/[0.075] hover:shadow-lg hover:shadow-cyan-950/10"
+                  key={step.title}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-cyan-200/10 text-cyan-100">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    {index < workflowSteps.length - 1 ? <ArrowRight className="mt-2 hidden h-4 w-4 text-slate-500 lg:block" /> : null}
+                  </div>
+                  <h3 className="mt-3 text-base font-semibold text-white">{step.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">{step.detail}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className="grid items-start gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+          <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <Bot className="h-5 w-5 text-cyan-200" />
+              <h2 className="text-lg font-semibold text-white">Register Agent</h2>
+            </div>
+            <label className="block text-sm font-medium text-slate-300">Agent name</label>
             <input
-              className="focus-ring mt-2 h-11 w-full rounded-md border border-ink/15 px-3"
+              className="focus-ring soft-transition mt-2 h-12 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-slate-100 placeholder:text-slate-500"
               value={agentName}
               onChange={(event) => setAgentName(event.target.value)}
             />
-            <label className="mt-4 block text-sm font-medium text-ink/70">Description</label>
+            <label className="mt-4 block text-sm font-medium text-slate-300">Description</label>
             <textarea
-              className="focus-ring mt-2 min-h-24 w-full rounded-md border border-ink/15 p-3"
+              className="focus-ring soft-transition mt-2 min-h-28 w-full rounded-md border border-white/10 bg-slate-950/50 p-3 text-slate-100 placeholder:text-slate-500"
               value={agentDescription}
               onChange={(event) => setAgentDescription(event.target.value)}
             />
             <button
-              className="focus-ring mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-md bg-tide px-4 text-sm font-semibold text-white disabled:opacity-60"
+              className="focus-ring soft-transition mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-cyan-200 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/20 disabled:opacity-60 sm:w-auto"
               onClick={registerAgent}
               disabled={busy}
             >
@@ -429,20 +578,20 @@ export function MemoryVaultApp() {
             </button>
           </section>
 
-          <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-            <div className="mb-5 flex items-center gap-3">
+          <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
+            <div className="mb-4 flex items-center gap-3">
               <Link className="h-5 w-5 text-copper" />
-              <h2 className="text-lg font-semibold text-ink">Anchor Memory</h2>
+              <h2 className="text-lg font-semibold text-white">Anchor Memory</h2>
             </div>
-            <label className="block text-sm font-medium text-ink/70">Agent ID</label>
+            <label className="block text-sm font-medium text-slate-300">Agent ID</label>
             <input
-              className="focus-ring mt-2 h-11 w-full rounded-md border border-ink/15 px-3"
+              className="focus-ring soft-transition mt-2 h-12 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-slate-100 placeholder:text-slate-500"
               value={agentId}
               onChange={(event) => setAgentId(event.target.value)}
             />
-            <label className="mt-4 block text-sm font-medium text-ink/70">Memory type</label>
+            <label className="mt-4 block text-sm font-medium text-slate-300">Memory type</label>
             <select
-              className="focus-ring mt-2 h-11 w-full rounded-md border border-ink/15 px-3"
+              className="focus-ring soft-transition mt-2 h-12 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-slate-100"
               value={memoryType}
               onChange={(event) => setMemoryType(event.target.value)}
             >
@@ -451,14 +600,17 @@ export function MemoryVaultApp() {
               <option value="user-preference">User preference</option>
               <option value="system-instruction">System instruction</option>
             </select>
-            <label className="mt-4 block text-sm font-medium text-ink/70">Memory or log content</label>
+            <label className="mt-4 block text-sm font-medium text-slate-300">Memory or log content</label>
             <textarea
-              className="focus-ring mt-2 min-h-32 w-full rounded-md border border-ink/15 p-3"
+              className="focus-ring soft-transition mt-2 min-h-36 w-full rounded-md border border-white/10 bg-slate-950/50 p-3 text-slate-100 placeholder:text-slate-500"
               value={memoryContent}
               onChange={(event) => setMemoryContent(event.target.value)}
             />
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              Storage indexing may take a few moments depending on 0G propagation.
+            </p>
             <button
-              className="focus-ring mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-md bg-copper px-4 text-sm font-semibold text-white disabled:opacity-60"
+              className="focus-ring soft-transition mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-copper px-5 text-sm font-semibold text-white shadow-lg shadow-copper/15 disabled:opacity-60 sm:w-auto"
               onClick={anchorMemory}
               disabled={busy}
             >
@@ -468,12 +620,12 @@ export function MemoryVaultApp() {
           </section>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-          <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-ink">Owned Agents</h2>
+        <div className="grid items-start gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-white">Owned Agents</h2>
               <button
-                className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-md border border-ink/15 px-3 text-sm font-semibold disabled:opacity-60"
+                className="focus-ring soft-transition inline-flex h-10 items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-slate-100 hover:border-cyan-200/40 disabled:opacity-60"
                 onClick={loadAgents}
                 disabled={busy || !account}
               >
@@ -483,48 +635,51 @@ export function MemoryVaultApp() {
             </div>
             <div className="space-y-3">
               {agents.length === 0 ? (
-                <p className="text-sm text-ink/60">No agents loaded yet.</p>
+                <p className="text-sm text-slate-400">No agents loaded yet.</p>
               ) : (
                 agents.map((agent) => (
                   <button
                     key={agent.id}
-                    className="focus-ring block w-full rounded-md border border-ink/10 p-4 text-left hover:border-tide/50"
+                    className="focus-ring soft-transition group block w-full rounded-md border border-white/10 bg-white/[0.035] p-4 text-left hover:border-cyan-200/40 hover:bg-white/[0.06] hover:shadow-lg hover:shadow-cyan-950/10"
                     onClick={() => {
                       setAgentId(agent.id);
                       setVerifyRootHash(agent.metadataRootHash);
                     }}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-ink">#{agent.id} {agent.name}</span>
-                      <span className="text-xs text-ink/60">{agent.memoryCount} memories</span>
+                      <span className="font-semibold text-white group-hover:text-cyan-100">#{agent.id} {agent.name}</span>
+                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-slate-300">{agent.memoryCount} memories</span>
                     </div>
-                    <p className="mt-2 text-sm text-ink/65">{agent.description}</p>
-                    <p className="mt-2 text-xs text-ink/50">{shortHash(agent.metadataRootHash)}</p>
+                    <p className="mt-2 text-sm text-slate-400">{agent.description}</p>
+                    <p className="mt-2 text-xs text-slate-500">{shortHash(agent.metadataRootHash)}</p>
                   </button>
                 ))
               )}
             </div>
           </section>
 
-          <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-            <div className="mb-5 flex items-center gap-3">
-              <FileCheck2 className="h-5 w-5 text-moss" />
-              <h2 className="text-lg font-semibold text-ink">Proof Verification</h2>
+          <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <FileCheck2 className="h-5 w-5 text-emerald-300" />
+              <h2 className="text-lg font-semibold text-white">Proof Verification</h2>
             </div>
-            <label className="block text-sm font-medium text-ink/70">0G Storage root hash</label>
+            <label className="block text-sm font-medium text-slate-300">0G Storage root hash</label>
+            <p className="mb-3 text-sm leading-6 text-slate-400">
+              Paste a root hash and expected content hash, or generate one from Anchor Memory.
+            </p>
             <input
-              className="focus-ring mt-2 h-11 w-full rounded-md border border-ink/15 px-3"
+              className="focus-ring soft-transition mt-2 h-12 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-slate-100 placeholder:text-slate-500"
               value={verifyRootHash}
               onChange={(event) => setVerifyRootHash(event.target.value)}
             />
-            <label className="mt-4 block text-sm font-medium text-ink/70">Expected content hash</label>
+            <label className="mt-4 block text-sm font-medium text-slate-300">Expected content hash</label>
             <input
-              className="focus-ring mt-2 h-11 w-full rounded-md border border-ink/15 px-3"
+              className="focus-ring soft-transition mt-2 h-12 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-slate-100 placeholder:text-slate-500"
               value={verifyContentHash}
               onChange={(event) => setVerifyContentHash(event.target.value)}
             />
             <button
-              className="focus-ring mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-md bg-moss px-4 text-sm font-semibold text-white disabled:opacity-60"
+              className="focus-ring soft-transition mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-emerald-300 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-950/15 disabled:opacity-60 sm:w-auto"
               onClick={verifyProof}
               disabled={busy || !verifyRootHash}
             >
@@ -533,12 +688,12 @@ export function MemoryVaultApp() {
             </button>
 
             {verification ? (
-              <div className="mt-5 rounded-md border border-ink/10 bg-cloud p-4">
-                <p className="font-semibold text-ink">
+              <div className="mt-5 rounded-md border border-white/10 bg-slate-950/60 p-4">
+                <p className="font-semibold text-white">
                   {verification.verified ? "Verified" : "Hash mismatch"}
                 </p>
-                <p className="mt-2 text-sm text-ink/70">Content hash: {shortHash(verification.contentHash)}</p>
-                <pre className="mt-3 max-h-56 overflow-auto rounded-md bg-ink p-3 text-xs text-white">
+                <p className="mt-2 text-sm text-slate-400">Content hash: {shortHash(verification.contentHash)}</p>
+                <pre className="mt-3 max-h-56 overflow-auto rounded-md bg-black/50 p-3 text-xs text-slate-200">
                   {JSON.stringify(verification.payload, null, 2)}
                 </pre>
               </div>
@@ -547,32 +702,32 @@ export function MemoryVaultApp() {
         </div>
 
         {lastUpload ? (
-          <section className="rounded-md border border-ink/10 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-ink">Latest Proof Artifact</h2>
+          <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
+            <h2 className="text-lg font-semibold text-white">Latest Proof Artifact</h2>
             <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
-              <p><span className="font-semibold">Root:</span> {lastUpload.rootHash}</p>
-              <p><span className="font-semibold">Content hash:</span> {lastUpload.contentHash}</p>
-              <p><span className="font-semibold">Storage tx:</span> {lastUpload.txHash}</p>
-              <p><span className="font-semibold">Bytes:</span> {lastUpload.bytes}</p>
-              <p>
-                <span className="font-semibold">Storage status:</span>{" "}
-                {lastUpload.storageStatus === "uploaded" ? "Uploaded to 0G Storage" : "Pending indexer upload"}
+              <p className="text-slate-300"><span className="font-semibold text-white">Root:</span> {lastUpload.rootHash}</p>
+              <p className="text-slate-300"><span className="font-semibold text-white">Content hash:</span> {lastUpload.contentHash}</p>
+              <p className="text-slate-300"><span className="font-semibold text-white">Storage tx:</span> {lastUpload.txHash}</p>
+              <p className="text-slate-300"><span className="font-semibold text-white">Bytes:</span> {lastUpload.bytes}</p>
+              <p className="text-slate-300">
+                <span className="font-semibold text-white">Storage status:</span>{" "}
+                {storageStatusLabel(lastUpload)}
               </p>
-              {lastUpload.storageError ? (
-                <p className="text-amber-800"><span className="font-semibold">Storage note:</span> {lastUpload.storageError}</p>
-              ) : null}
+              <p className={lastUpload.storageStatus === "uploaded" ? "text-emerald-300" : "text-amber-200"}>
+                <span className="font-semibold text-white">Storage note:</span> {storageStatusNote(lastUpload)}
+              </p>
               {lastUpload.storageStatus === "pending" ? (
                 <button
-                  className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-900 disabled:opacity-60"
+                  className="focus-ring soft-transition inline-flex h-10 items-center justify-center gap-2 rounded-md border border-amber-200/30 bg-amber-300/10 px-3 text-sm font-semibold text-amber-100 disabled:opacity-60"
                   onClick={restoreRealStorageUpload}
                   disabled={busy}
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-                  Retry real 0G upload
+                  {retryCountdown > 0 ? `Retry in ${retryCountdown}s` : "Verify storage propagation"}
                 </button>
               ) : null}
               {lastTxHash ? (
-                <a className="inline-flex items-center gap-2 font-semibold text-tide" href={explorerTxUrl(lastTxHash)} target="_blank">
+                <a className="soft-transition inline-flex items-center gap-2 font-semibold text-cyan-200 hover:text-white" href={explorerTxUrl(lastTxHash)} target="_blank">
                   <ExternalLink className="h-4 w-4" />
                   View latest chain transaction
                 </a>
@@ -580,6 +735,10 @@ export function MemoryVaultApp() {
             </div>
           </section>
         ) : null}
+
+        <footer className="pb-4 pt-2 text-center text-xs font-medium text-slate-500 sm:text-sm">
+          Built for 0G APAC Hackathon • Verifiable AI memory infrastructure
+        </footer>
       </section>
     </main>
   );

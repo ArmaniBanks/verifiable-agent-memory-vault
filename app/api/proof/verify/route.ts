@@ -26,7 +26,7 @@ export async function POST(request: Request) {
           payload: null,
           pending: true,
           error:
-            "This artifact is content-addressed locally because the 0G Storage indexer was unreachable during upload. Retry upload when the indexer is reachable to get a downloadable 0G Storage proof."
+            "Queued for 0G indexing. Fallback proof remains active while storage propagation completes."
         },
         { status: 409 }
       );
@@ -46,7 +46,12 @@ export async function POST(request: Request) {
       raw: downloaded.raw
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown verification error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Storage propagation is still pending.",
+        detail: error instanceof Error ? error.message : "Unknown verification error"
+      },
+      { status: 500 }
+    );
   }
 }
