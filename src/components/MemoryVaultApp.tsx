@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bot, CheckCircle2, Database, ExternalLink, FileCheck2, Link, Loader2, Moon, ShieldCheck, Sun, Wallet } from "lucide-react";
+import Image from "next/image";
+import { ArrowRight, Bot, CheckCircle2, Database, ExternalLink, FileCheck2, Link, Loader2, Moon, Sun, Wallet } from "lucide-react";
 import { BrowserProvider, Contract, Interface } from "ethers";
 import { agentMemoryVaultAbi } from "@/src/lib/agentMemoryVaultAbi";
 import { explorerAddressUrl, explorerTxUrl, ogConfig } from "@/src/lib/config";
@@ -409,11 +410,25 @@ export function MemoryVaultApp() {
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent" />
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex max-w-4xl flex-col gap-5 sm:flex-row sm:items-start">
-              <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] shadow-2xl shadow-cyan-950/30">
-                <ShieldCheck className="h-9 w-9 text-cyan-200" />
-                <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-copper text-[10px] font-bold text-white shadow-lg shadow-copper/30">
-                  0G
-                </span>
+              <div className="relative flex h-[76px] w-[76px] shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#050a13]/80 p-2 shadow-2xl shadow-cyan-950/30 sm:hidden">
+                <Image
+                  alt="Verifiable Agent Memory Vault"
+                  className="h-full w-full object-contain"
+                  height={512}
+                  priority
+                  src="/brand/vamv-icon-transparent.png"
+                  width={512}
+                />
+              </div>
+              <div className="relative hidden h-[78px] w-[250px] shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#050a13]/80 px-3 shadow-2xl shadow-cyan-950/30 sm:flex lg:h-[86px] lg:w-[276px]">
+                <Image
+                  alt="Verifiable Agent Memory Vault"
+                  className="h-auto w-full object-contain"
+                  height={500}
+                  priority
+                  src="/brand/vamv-logo-transparent.png"
+                  width={1600}
+                />
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-3">

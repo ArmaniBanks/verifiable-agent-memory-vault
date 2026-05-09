@@ -1,5 +1,7 @@
 # Verifiable Agent Memory Vault
 
+![Verifiable Agent Memory Vault logo](public/brand/vamv-logo-transparent.png)
+
 AI agent memory and execution logs with verifiable provenance on 0G.
 
 Built for the 0G APAC Hackathon.
@@ -228,7 +230,7 @@ npm run dev
 9. Open:
 
 ```text
-https://verifiable-agent-memory-vault.vercel.app/
+http://127.0.0.1:3000
 ```
 
 ## Demo Flow
