@@ -1,0 +1,57 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Verifiable Agent Memory Vault icon</title>
+  <desc id="desc">Rounded dark app icon with a cyan and green circuit vault symbol and orange 0G badge.</desc>
+  <defs>
+    <linearGradient id="edge" x1="133" y1="160" x2="379" y2="411" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#26BFFF"/>
+      <stop offset="0.47" stop-color="#14E1D5"/>
+      <stop offset="1" stop-color="#8BEE5D"/>
+    </linearGradient>
+    <linearGradient id="top" x1="151" y1="150" x2="355" y2="159" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60E9FF"/>
+      <stop offset="0.52" stop-color="#F7FFF2"/>
+      <stop offset="1" stop-color="#D8F1C0"/>
+    </linearGradient>
+    <linearGradient id="core" x1="214" y1="211" x2="287" y2="319" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6FFF2"/>
+      <stop offset="0.54" stop-color="#D9FFF4"/>
+      <stop offset="1" stop-color="#9DE7CF"/>
+    </linearGradient>
+    <linearGradient id="circuit" x1="155" y1="167" x2="359" y2="248" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#16C7FF"/>
+      <stop offset="1" stop-color="#A5F05E"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="126" fill="#020403"/>
+  <rect x="73" y="60" width="366" height="392" rx="88" fill="#030605" stroke="#101815" stroke-width="4"/>
+
+  <g>
+    <path d="M153 162C193 153 228 137 257 114C285 135 316 151 352 161V186C315 176 283 160 257 139C229 161 195 177 153 187V162Z" fill="url(#top)"/>
+    <path d="M151 204L177 219V307L229 338V386L151 340V204Z" fill="url(#edge)"/>
+    <path d="M361 204L335 219V307L283 338V386L361 340V204Z" fill="url(#edge)"/>
+    <path d="M180 227L204 240V294L231 312V347L180 316V227Z" fill="#0AAFE2"/>
+    <path d="M332 227L308 240V294L281 312V347L332 316V227Z" fill="#80EC62"/>
+    <path d="M256 389L256 326" stroke="url(#edge)" stroke-width="8" stroke-linecap="round"/>
+
+    <path d="M210 212H256L302 230V294L256 321L210 294V212Z" fill="url(#core)"/>
+    <path d="M210 212H256L302 230" stroke="#F7FFF2" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M256 238C274 238 288 252 288 270C288 282 281 293 271 298L281 344H231L241 298C231 293 224 282 224 270C224 252 238 238 256 238Z" fill="#020403"/>
+
+    <path d="M173 198H214V220H173" stroke="url(#circuit)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M297 220H339V198H361" stroke="url(#circuit)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M256 203V169" stroke="url(#circuit)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M225 203V184H206" stroke="url(#circuit)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M287 203V184H306" stroke="url(#circuit)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="162" y="190" width="26" height="16" rx="4" fill="#1FCBFF"/>
+    <rect x="207" y="174" width="20" height="20" rx="4" fill="#50E7D3"/>
+    <rect x="244" y="152" width="24" height="18" rx="5" fill="#B7F5CD"/>
+    <rect x="285" y="174" width="20" height="20" rx="4" fill="#92ED70"/>
+    <rect x="324" y="190" width="26" height="16" rx="4" fill="#A7EF62"/>
+  </g>
+
+  <g>
+    <circle cx="354" cy="151" r="54" fill="#060706" stroke="#FF9B1C" stroke-width="6"/>
+    <text x="354" y="169" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="43" font-weight="800" fill="#FF9B1C">0G</text>
+  </g>
+</svg>
