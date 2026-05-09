@@ -1,0 +1,9 @@
+{
+  "network": "ogMainnet",
+  "chainId": 16661,
+  "contractName": "AgentMemoryVault",
+  "address": "0x1d3a911683292b48439Ad3e003c6129E96c74f2e",
+  "deployer": "0xFD861824B72c83b61604dbe6Ce7e29fBFeB101da",
+  "explorer": "https://chainscan.0g.ai/address/0x1d3a911683292b48439Ad3e003c6129E96c74f2e",
+  "deployedAt": "2026-05-08T22:06:39.715Z"
+}
