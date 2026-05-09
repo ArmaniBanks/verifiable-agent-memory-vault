@@ -94,6 +94,16 @@ export async function uploadPayloadTo0G(payload: VaultPayload, mode: UploadMode 
   }
 
   const contentHash = sha256Hex(data);
+  const computedRootHash = tree?.rootHash() || contentHash;
+
+  console.info("[VAMV debug] storage-upload-start", {
+    kind: payload.kind,
+    agentId: payload.agentId,
+    bytes: data.byteLength,
+    rootHash: computedRootHash,
+    contentHash,
+    indexers: serverStorageIndexerUrls
+  });
 
   let tx;
   const attemptedIndexerErrors: string[] = [];
@@ -101,6 +111,11 @@ export async function uploadPayloadTo0G(payload: VaultPayload, mode: UploadMode 
   try {
     for (const indexerUrl of serverStorageIndexerUrls) {
       try {
+        console.info("[VAMV debug] storage-indexer-attempt", {
+          indexerUrl,
+          rootHash: computedRootHash,
+          contentHash
+        });
         const indexer = new Indexer(indexerUrl);
         const [uploadTx, uploadErr] = await indexer.upload(memData, serverRpcUrl, signer, {
           finalityRequired: true,
@@ -110,9 +125,20 @@ export async function uploadPayloadTo0G(payload: VaultPayload, mode: UploadMode 
           throw new Error(`0G upload error via ${indexerUrl}: ${uploadErr.message || uploadErr}`);
         }
         tx = uploadTx;
+        console.info("[VAMV debug] storage-indexer-success", {
+          indexerUrl,
+          rootHash: "rootHash" in uploadTx ? uploadTx.rootHash : computedRootHash,
+          txHash: "txHash" in uploadTx ? uploadTx.txHash : undefined
+        });
         break;
       } catch (error) {
         attemptedIndexerErrors.push(`${indexerUrl}: ${errorMessage(error)}`);
+        console.info("[VAMV debug] storage-indexer-error", {
+          indexerUrl,
+          rootHash: computedRootHash,
+          contentHash,
+          error: errorMessage(error)
+        });
         if (!isNetworkTimeout(error)) {
           throw error;
         }
@@ -129,7 +155,7 @@ export async function uploadPayloadTo0G(payload: VaultPayload, mode: UploadMode 
 
     const message = attemptedIndexerErrors.length > 0 ? attemptedIndexerErrors.join(" | ") : errorMessage(error);
     return {
-      rootHash: tree?.rootHash() || contentHash,
+      rootHash: computedRootHash,
       txHash: `storage-pending:${contentHash.slice(2, 18)}`,
       contentHash,
       bytes: data.byteLength,
@@ -158,13 +184,26 @@ export async function downloadPayloadFrom0G(rootHash: string) {
   let blob: globalThis.Blob | null = null;
 
   for (const indexerUrl of serverStorageIndexerUrls) {
+    console.info("[VAMV debug] storage-download-attempt", {
+      indexerUrl,
+      rootHash
+    });
     const indexer = new Indexer(indexerUrl);
     const [downloadedBlob, err] = await indexer.downloadToBlob(rootHash, { proof: true });
     if (err === null) {
       blob = downloadedBlob;
+      console.info("[VAMV debug] storage-download-success", {
+        indexerUrl,
+        rootHash
+      });
       break;
     }
     errors.push(`${indexerUrl}: ${err.message || err}`);
+    console.info("[VAMV debug] storage-download-error", {
+      indexerUrl,
+      rootHash,
+      error: err.message || String(err)
+    });
   }
 
   if (!blob) {

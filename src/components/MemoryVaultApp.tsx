@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { ArrowRight, Bot, CheckCircle2, Database, ExternalLink, FileCheck2, Link, Loader2, Moon, Sun, Wallet } from "lucide-react";
 import { BrowserProvider, Contract, Interface } from "ethers";
@@ -62,6 +62,10 @@ function storageStatusNote(upload: UploadResponse) {
 
 function isPendingPropagationMessage(message: string) {
   return /storage propagation is still pending|queued for 0g indexing|fallback proof remains active/i.test(message);
+}
+
+function logVaultDebug(label: string, details: Record<string, unknown>) {
+  console.info(`[VAMV debug] ${label}`, details);
 }
 
 const workflowSteps = [
@@ -140,6 +144,8 @@ export function MemoryVaultApp() {
   const [verification, setVerification] = useState<VerificationResponse | null>(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [storagePolling, setStoragePolling] = useState(false);
+  const autoPollKeyRef = useRef("");
   const isPendingNotice = Boolean(error && isPendingPropagationMessage(error));
 
   const contractReady = ogConfig.contractAddress.length > 0;
@@ -166,6 +172,25 @@ export function MemoryVaultApp() {
     window.localStorage.setItem("vamv-theme", theme);
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    if (!lastUpload || lastUpload.storageStatus !== "pending" || !lastTxHash || storagePolling) return;
+
+    const pollKey = `${lastTxHash}:${lastUpload.rootHash}:${lastUpload.contentHash}`;
+    if (autoPollKeyRef.current === pollKey) return;
+    autoPollKeyRef.current = pollKey;
+
+    logVaultDebug("auto-indexing-poll-start", {
+      rootHash: lastUpload.rootHash,
+      contentHash: lastUpload.contentHash,
+      storageStatus: lastUpload.storageStatus,
+      txHash: lastUpload.txHash
+    });
+
+    void restoreRealStorageUpload({ automatic: true, maxAttempts: 8, delayMs: 4500 });
+  // The poll should start once per pending artifact/chain tx pair; the retry function reads that captured artifact.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastTxHash, lastUpload, storagePolling]);
 
   async function getContract() {
     if (!contractReady) {
@@ -202,6 +227,15 @@ export function MemoryVaultApp() {
     });
 
     const payload = await response.json();
+    logVaultDebug("upload-response", {
+      ok: response.ok,
+      rootHash: payload.rootHash,
+      contentHash: payload.contentHash,
+      storageStatus: payload.storageStatus,
+      txHash: payload.txHash,
+      error: payload.error,
+      storageError: payload.storageError
+    });
     if (!response.ok) {
       throw new Error(payload.error || "0G upload failed.");
     }
@@ -275,6 +309,12 @@ export function MemoryVaultApp() {
         author: account,
         content: memoryContent
       });
+      logVaultDebug("memory-upload-before-anchor", {
+        rootHash: upload.rootHash,
+        contentHash: upload.contentHash,
+        storageStatus: upload.storageStatus,
+        txHash: upload.txHash
+      });
       setLastUpload(upload);
       setVerifyRootHash(upload.rootHash);
       setVerifyContentHash(upload.contentHash);
@@ -293,6 +333,12 @@ export function MemoryVaultApp() {
       );
       setLastTxHash(tx.hash);
       await tx.wait();
+      logVaultDebug("memory-anchor-confirmed", {
+        chainTxHash: tx.hash,
+        rootHash: upload.rootHash,
+        contentHash: upload.contentHash,
+        storageStatus: upload.storageStatus
+      });
       setStatus(
         upload.storageStatus === "uploaded"
           ? `Memory anchored for agent #${agentId}. Proof verified from 0G Storage.`
@@ -336,24 +382,58 @@ export function MemoryVaultApp() {
     }
   }
 
+  async function verifyStoredProof(rootHash: string, expectedContentHash: string | undefined, source: "manual" | "auto") {
+    logVaultDebug("proof-request", {
+      source,
+      rootHash,
+      expectedContentHash
+    });
+
+    const response = await fetch("/api/proof/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+        rootHash,
+        expectedContentHash
+        })
+      });
+
+      const result = await response.json();
+    logVaultDebug("proof-response", {
+      source,
+      ok: response.ok,
+      verified: result.verified,
+      pending: result.pending,
+      rootHash: result.rootHash,
+      contentHash: result.contentHash,
+      matchesExpected: result.matchesExpected,
+      error: result.error,
+      detail: result.detail
+    });
+
+    if (!response.ok) {
+      throw new Error(result.pending ? "Storage propagation is still pending." : result.error || "Proof verification failed.");
+    }
+
+    const verifiedResult = result as VerificationResponse;
+    setVerification(verifiedResult);
+    logVaultDebug("verification-result", {
+      source,
+      verified: verifiedResult.verified,
+      rootHash: verifiedResult.rootHash,
+      contentHash: verifiedResult.contentHash,
+      matchesExpected: verifiedResult.matchesExpected
+    });
+    return verifiedResult;
+  }
+
   async function verifyProof() {
     setBusy(true);
     setError("");
     setStatus("Verifying storage propagation...");
 
     try {
-      const response = await fetch("/api/proof/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rootHash: verifyRootHash,
-          expectedContentHash: verifyContentHash || undefined
-        })
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.pending ? "Storage propagation is still pending." : result.error || "Proof verification failed.");
-      setVerification(result);
+      const result = await verifyStoredProof(verifyRootHash, verifyContentHash || undefined, "manual");
       setStatus(result.verified ? "Proof verified from 0G Storage." : "Storage proof returned, but content hash did not match.");
     } catch (err) {
       setStatus("Fallback proof active. Waiting for 0G Storage indexing...");
@@ -363,43 +443,105 @@ export function MemoryVaultApp() {
     }
   }
 
-  async function restoreRealStorageUpload() {
+  async function restoreRealStorageUpload(options: { automatic?: boolean; maxAttempts?: number; delayMs?: number } = {}) {
     if (!lastUpload) return;
 
-    setBusy(true);
+    const automatic = options.automatic ?? false;
+    const maxAttempts = options.maxAttempts ?? 1;
+    const delayMs = options.delayMs ?? 5000;
+
+    if (automatic) {
+      setStoragePolling(true);
+    } else {
+      setBusy(true);
+    }
     setError("");
-    setRetryCountdown(5);
-    setStatus("Verifying storage propagation...");
+    setStatus(automatic ? "Verifying storage propagation in the background..." : "Verifying storage propagation...");
 
     try {
-      for (let seconds = 5; seconds > 0; seconds -= 1) {
-        setRetryCountdown(seconds);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const countdownSeconds = Math.ceil(delayMs / 1000);
+        for (let seconds = countdownSeconds; seconds > 0; seconds -= 1) {
+          setRetryCountdown(seconds);
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        setRetryCountdown(0);
+
+        logVaultDebug("indexing-retry-attempt", {
+          automatic,
+          attempt,
+          maxAttempts,
+          rootHash: lastUpload.rootHash,
+          contentHash: lastUpload.contentHash,
+          storageStatus: lastUpload.storageStatus,
+          txHash: lastUpload.txHash
+        });
+
+        const response = await fetch("/api/memory/restore-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload: lastUpload.payload })
+        });
+
+        const result = await response.json();
+        logVaultDebug("indexing-restore-response", {
+          automatic,
+          attempt,
+          ok: response.ok,
+          rootHash: result.rootHash,
+          contentHash: result.contentHash,
+          storageStatus: result.storageStatus,
+          txHash: result.txHash,
+          error: result.error,
+          detail: result.detail
+        });
+
+        if (!response.ok) {
+          if (attempt < maxAttempts) {
+            setStatus("Fallback proof active. Waiting for 0G Storage indexing...");
+            setError("Queued for 0G indexing. Fallback proof remains active.");
+            continue;
+          }
+
+          throw new Error("Queued for 0G indexing. Fallback proof remains active.");
+        }
+
+        const restored = result as UploadResponse;
+        setLastUpload(restored);
+        setVerifyRootHash(restored.rootHash);
+        setVerifyContentHash(restored.contentHash);
+        setVerification({
+          verified: true,
+          rootHash: restored.rootHash,
+          contentHash: restored.contentHash,
+          matchesExpected: true,
+          payload: restored.payload
+        });
+        setStatus("Proof verified from 0G Storage.");
+        setError("");
+
+        try {
+          const proofResult = await verifyStoredProof(restored.rootHash, restored.contentHash, "auto");
+          setStatus(proofResult.verified ? "Proof verified from 0G Storage." : "Storage proof returned, but content hash did not match.");
+        } catch (err) {
+          logVaultDebug("post-index-proof-pending", {
+            automatic,
+            error: err instanceof Error ? err.message : String(err),
+            rootHash: restored.rootHash,
+            contentHash: restored.contentHash
+          });
+        }
+        return;
       }
-      setRetryCountdown(0);
-
-      const response = await fetch("/api/memory/restore-upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payload: lastUpload.payload })
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error("Queued for 0G indexing. Fallback proof remains active.");
-      }
-
-      const restored = result as UploadResponse;
-      setLastUpload(restored);
-      setVerifyRootHash(restored.rootHash);
-      setVerifyContentHash(restored.contentHash);
-      setStatus("Proof verified from 0G Storage.");
     } catch (err) {
       setStatus("Fallback proof active. You can keep working while 0G indexing catches up.");
       setError(err instanceof Error ? err.message : "Queued for 0G indexing. Fallback proof remains active.");
     } finally {
       setRetryCountdown(0);
-      setBusy(false);
+      setStoragePolling(false);
+      if (!automatic) {
+        setBusy(false);
+      }
     }
   }
 
@@ -734,11 +876,11 @@ export function MemoryVaultApp() {
               {lastUpload.storageStatus === "pending" ? (
                 <button
                   className="focus-ring soft-transition inline-flex h-10 items-center justify-center gap-2 rounded-md border border-amber-200/30 bg-amber-300/10 px-3 text-sm font-semibold text-amber-100 disabled:opacity-60"
-                  onClick={restoreRealStorageUpload}
-                  disabled={busy}
+                  onClick={() => restoreRealStorageUpload()}
+                  disabled={busy || storagePolling}
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-                  {retryCountdown > 0 ? `Retry in ${retryCountdown}s` : "Verify storage propagation"}
+                  {retryCountdown > 0 ? `Retry in ${retryCountdown}s` : storagePolling ? "Checking 0G indexing" : "Verify storage propagation"}
                 </button>
               ) : null}
               {lastTxHash ? (
