@@ -228,7 +228,7 @@ npm run dev
 9. Open:
 
 ```text
-http://127.0.0.1:3000
+https://verifiable-agent-memory-vault.vercel.app/
 ```
 
 ## Demo Flow
