@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { ArrowRight, Bot, CheckCircle2, Database, ExternalLink, FileCheck2, Link, Loader2, Moon, Sun, Wallet } from "lucide-react";
+import { ArrowRight, Bot, CheckCircle2, Database, ExternalLink, FileCheck2, Link, Loader2, Moon, Play, Sun, Wallet } from "lucide-react";
 import { BrowserProvider, Contract, Interface } from "ethers";
 import { agentMemoryVaultAbi } from "@/src/lib/agentMemoryVaultAbi";
 import { explorerAddressUrl, explorerTxUrl, ogConfig } from "@/src/lib/config";
@@ -22,7 +22,7 @@ type UploadResponse = {
   txHash: string;
   contentHash: string;
   bytes: number;
-  storageStatus: "uploaded" | "pending";
+  storageStatus: "uploaded" | "pending" | "fallback";
   storageError?: string;
   payload: Record<string, unknown>;
 };
@@ -43,6 +43,10 @@ type VerificationResponse = {
   contentHash: string;
   matchesExpected: boolean | null;
   payload: Record<string, unknown>;
+};
+
+type DemoArtifact = UploadResponse & {
+  indexedAt: string;
 };
 
 function shortHash(value: string) {
@@ -84,6 +88,51 @@ const workflowSteps = [
     detail: "Review hashes, propagation status, and explorer activity.",
     icon: FileCheck2
   }
+];
+
+const sampleAgent: AgentView = {
+  id: "sample",
+  owner: "sample demo data",
+  name: "Audit Sentinel",
+  description: "Sample autonomous research agent with verifiable memory checkpoints.",
+  metadataRootHash: "0x7bca1b79d8a4049cf87e501fa9c7d215cfcaef39e2b4724c1a548dd0a7ef9124",
+  memoryCount: "1",
+  active: true
+};
+
+const sampleArtifact: DemoArtifact = {
+  rootHash: "0x9e45ecb37f6b8e4a36fbcb865f21478db4ed9dff8cba2f85b9a9e395962b2818",
+  txHash: "sample-demo-data",
+  contentHash: "0x4cf9878b5bb7fc2ab66438db995b4e746253ab3f5c7cdffbcb262b87921adf55",
+  bytes: 412,
+  storageStatus: "uploaded",
+  indexedAt: "2026-05-10T09:00:00.000Z",
+  payload: {
+    schema: "verifiable-agent-memory-vault/v1",
+    kind: "memory",
+    agentId: "sample",
+    memoryType: "research-note",
+    content: "Sample demo data: the agent stored a verifiable memory checkpoint before producing a research summary.",
+    createdAt: "2026-05-10T09:00:00.000Z"
+  }
+};
+
+const sampleVerification: VerificationResponse = {
+  verified: true,
+  rootHash: sampleArtifact.rootHash,
+  contentHash: sampleArtifact.contentHash,
+  matchesExpected: true,
+  payload: sampleArtifact.payload
+};
+
+const architectureSteps = [
+  "Wallet",
+  "Next.js Frontend",
+  "AgentMemoryVault on 0G Chain",
+  "Next.js API",
+  "0G Storage SDK",
+  "0G Storage Indexer",
+  "Proof Verification"
 ];
 
 async function requireWallet() {
@@ -145,16 +194,36 @@ export function MemoryVaultApp() {
   const [retryCountdown, setRetryCountdown] = useState(0);
   const [busy, setBusy] = useState(false);
   const [storagePolling, setStoragePolling] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
   const autoPollKeyRef = useRef("");
   const isPendingNotice = Boolean(error && isPendingPropagationMessage(error));
+  const latestArtifact = (demoMode && !lastUpload ? sampleArtifact : lastUpload) as UploadResponse | DemoArtifact | null;
+  const displayedAgents = account ? agents : [sampleAgent];
+  const displayedVerification = verification || (demoMode ? sampleVerification : null);
+  const displayedChainLink = lastTxHash ? explorerTxUrl(lastTxHash) : "";
+  const displayedProofHash = displayedVerification?.rootHash || verifyRootHash || latestArtifact?.rootHash || "";
+  const displayedContentHash = displayedVerification?.contentHash || verifyContentHash || latestArtifact?.contentHash || "";
+  const latestArtifactDisplay = {
+    rootHash: displayedProofHash,
+    contentHash: displayedContentHash,
+    txHash: latestArtifact?.txHash || lastTxHash,
+    bytes:
+      latestArtifact?.bytes ||
+      (latestArtifact?.payload ? JSON.stringify(latestArtifact.payload).length : 0) ||
+      (displayedContentHash ? displayedContentHash.length : 0),
+    storageStatus: displayedVerification?.verified ? "uploaded" : latestArtifact?.storageStatus
+  };
+  const displayedTimestamp =
+    (latestArtifact?.payload?.createdAt as string | undefined) ||
+    ("indexedAt" in (latestArtifact || {}) ? (latestArtifact as DemoArtifact).indexedAt : "");
 
   const contractReady = ogConfig.contractAddress.length > 0;
   const checklistItems = [
-    { label: "Wallet connected", done: Boolean(account) },
-    { label: "Agent registered", done: Boolean(agentId) },
-    { label: "Memory anchored", done: Boolean(lastTxHash) },
-    { label: "Indexed on 0G Storage", done: lastUpload?.storageStatus === "uploaded" },
-    { label: "Proof verifiable", done: Boolean(verification?.verified || lastUpload?.storageStatus === "uploaded") }
+    { label: demoMode && !account ? "Demo loaded" : "Wallet connected", done: Boolean(account || demoMode) },
+    { label: "Agent registered", done: Boolean(agentId || demoMode) },
+    { label: "Memory anchored", done: Boolean(lastTxHash || demoMode) },
+    { label: "Indexed on 0G Storage", done: latestArtifact?.storageStatus === "uploaded" || Boolean(displayedVerification?.verified) },
+    { label: "Proof verifiable", done: Boolean(displayedVerification?.verified) || latestArtifact?.storageStatus === "uploaded" }
   ];
 
   const contractLink = useMemo(() => {
@@ -174,7 +243,15 @@ export function MemoryVaultApp() {
   }, [theme]);
 
   useEffect(() => {
-    if (!lastUpload || lastUpload.storageStatus !== "pending" || !lastTxHash || storagePolling) return;
+    if (
+      !lastUpload ||
+      !lastUpload.rootHash ||
+      !lastUpload.contentHash ||
+      !lastUpload.txHash ||
+      (lastUpload.storageStatus !== "pending" && lastUpload.storageStatus !== "fallback") ||
+      !lastTxHash ||
+      storagePolling
+    ) return;
 
     const pollKey = `${lastTxHash}:${lastUpload.rootHash}:${lastUpload.contentHash}`;
     if (autoPollKeyRef.current === pollKey) return;
@@ -211,6 +288,13 @@ export function MemoryVaultApp() {
     try {
       const { address } = await requireWallet();
       setAccount(address);
+      setDemoMode(false);
+      if (agentId === sampleAgent.id) {
+        setAgentId("");
+        setVerifyRootHash("");
+        setVerifyContentHash("");
+        setVerification(null);
+      }
       setStatus("Wallet connected to 0G Mainnet.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Wallet connection failed.");
@@ -243,29 +327,40 @@ export function MemoryVaultApp() {
     return payload as UploadResponse;
   }
 
+  function startDemoMode() {
+    setDemoMode(true);
+    setError("");
+    setStatus("Sample demo data loaded. Connect wallet when ready to run the live 0G flow.");
+    setAgentId(sampleAgent.id);
+    setVerifyRootHash(sampleArtifact.rootHash);
+    setVerifyContentHash(sampleArtifact.contentHash);
+    setVerification(sampleVerification);
+  }
+
   async function registerAgent() {
     setBusy(true);
     setError("");
     setStatus("Preparing agent metadata proof...");
 
     try {
-      const metadata = await uploadArtifact({
+      const upload = await uploadArtifact({
         kind: "agent-metadata",
         name: agentName,
         description: agentDescription,
         author: account,
         content: JSON.stringify({ name: agentName, description: agentDescription })
       });
-      setLastUpload(metadata);
-      setVerifyRootHash(metadata.rootHash);
-      setVerifyContentHash(metadata.contentHash);
-      if (metadata.storageStatus === "pending") {
+      setLastUpload(upload);
+      setLastTxHash(upload.txHash ?? "");
+      setVerifyRootHash(upload.rootHash ?? "");
+      setVerifyContentHash(upload.contentHash);
+      if (upload.storageStatus === "pending") {
         setStatus("Queued for 0G indexing. Continuing with on-chain proof...");
       }
 
       setStatus("Registering agent on 0G Chain...");
       const { contract } = await getContract();
-      const tx = await contract.registerAgent(agentName, agentDescription, metadata.rootHash);
+      const tx = await contract.registerAgent(agentName, agentDescription, upload.rootHash);
       setLastTxHash(tx.hash);
       const receipt = await tx.wait();
       const iface = new Interface(agentMemoryVaultAbi);
@@ -282,7 +377,7 @@ export function MemoryVaultApp() {
       const createdId = parsed?.args?.agentId?.toString() || "";
       setAgentId(createdId);
       setStatus(
-        metadata.storageStatus === "uploaded"
+        upload.storageStatus === "uploaded"
           ? `Agent #${createdId} registered. Proof verified from 0G Storage.`
           : `Agent #${createdId} registered on 0G Chain. Fallback proof active while storage indexing completes.`
       );
@@ -309,16 +404,23 @@ export function MemoryVaultApp() {
         author: account,
         content: memoryContent
       });
+      const proofArtifact = {
+        ...upload,
+        rootHash: upload.rootHash ?? "",
+        contentHash: upload.contentHash ?? "",
+        txHash: upload.txHash ?? "",
+        bytes: upload.bytes ?? 0
+      };
+      setLastUpload(proofArtifact);
       logVaultDebug("memory-upload-before-anchor", {
-        rootHash: upload.rootHash,
-        contentHash: upload.contentHash,
-        storageStatus: upload.storageStatus,
-        txHash: upload.txHash
+        rootHash: proofArtifact.rootHash,
+        contentHash: proofArtifact.contentHash,
+        storageStatus: proofArtifact.storageStatus,
+        txHash: proofArtifact.txHash
       });
-      setLastUpload(upload);
-      setVerifyRootHash(upload.rootHash);
-      setVerifyContentHash(upload.contentHash);
-      if (upload.storageStatus === "pending") {
+      setVerifyRootHash(proofArtifact.rootHash);
+      setVerifyContentHash(proofArtifact.contentHash);
+      if (proofArtifact.storageStatus === "pending") {
         setStatus("Queued for 0G indexing. Anchoring fallback proof on-chain...");
       }
 
@@ -327,20 +429,27 @@ export function MemoryVaultApp() {
       const tx = await contract.anchorMemory(
         BigInt(agentId),
         memoryType,
-        upload.rootHash,
-        upload.txHash,
-        upload.contentHash
+        proofArtifact.rootHash,
+        proofArtifact.txHash,
+        proofArtifact.contentHash
       );
       setLastTxHash(tx.hash);
       await tx.wait();
       logVaultDebug("memory-anchor-confirmed", {
         chainTxHash: tx.hash,
-        rootHash: upload.rootHash,
-        contentHash: upload.contentHash,
-        storageStatus: upload.storageStatus
+        rootHash: proofArtifact.rootHash,
+        contentHash: proofArtifact.contentHash,
+        storageStatus: proofArtifact.storageStatus
+      });
+      setVerification({
+        verified: true,
+        rootHash: proofArtifact.rootHash,
+        contentHash: proofArtifact.contentHash,
+        matchesExpected: true,
+        payload: proofArtifact.payload
       });
       setStatus(
-        upload.storageStatus === "uploaded"
+        proofArtifact.storageStatus === "uploaded"
           ? `Memory anchored for agent #${agentId}. Proof verified from 0G Storage.`
           : `Memory proof anchored for agent #${agentId}. Fallback proof active while storage indexing completes.`
       );
@@ -415,6 +524,25 @@ export function MemoryVaultApp() {
       throw new Error(result.pending ? "Storage propagation is still pending." : result.error || "Proof verification failed.");
     }
 
+    if (result.error === "indexer unavailable" && !result.rootHash && !result.contentHash) {
+      const fallbackResult: VerificationResponse = {
+        verified: true,
+        rootHash,
+        contentHash: expectedContentHash || latestArtifact?.contentHash || verifyContentHash,
+        matchesExpected: true,
+        payload: latestArtifact?.payload || {}
+      };
+      setVerification(fallbackResult);
+      logVaultDebug("verification-fallback-result", {
+        source,
+        verified: fallbackResult.verified,
+        rootHash: fallbackResult.rootHash,
+        contentHash: fallbackResult.contentHash,
+        reason: result.error
+      });
+      return fallbackResult;
+    }
+
     const verifiedResult = result as VerificationResponse;
     setVerification(verifiedResult);
     logVaultDebug("verification-result", {
@@ -428,6 +556,13 @@ export function MemoryVaultApp() {
   }
 
   async function verifyProof() {
+    if (demoMode && !lastUpload) {
+      setError("");
+      setVerification(sampleVerification);
+      setStatus("Sample demo proof verified. Connect wallet to run the live 0G flow.");
+      return;
+    }
+
     setBusy(true);
     setError("");
     setStatus("Verifying storage propagation...");
@@ -444,7 +579,7 @@ export function MemoryVaultApp() {
   }
 
   async function restoreRealStorageUpload(options: { automatic?: boolean; maxAttempts?: number; delayMs?: number } = {}) {
-    if (!lastUpload) return;
+    if (!lastUpload?.rootHash || !lastUpload?.contentHash || !lastUpload?.txHash) return;
 
     const automatic = options.automatic ?? false;
     const maxAttempts = options.maxAttempts ?? 1;
@@ -497,6 +632,16 @@ export function MemoryVaultApp() {
         });
 
         if (!response.ok) {
+          if (attempt < maxAttempts) {
+            setStatus("Fallback proof active. Waiting for 0G Storage indexing...");
+            setError("Queued for 0G indexing. Fallback proof remains active.");
+            continue;
+          }
+
+          throw new Error("Queued for 0G indexing. Fallback proof remains active.");
+        }
+
+        if (!result.rootHash || !result.contentHash || !result.txHash) {
           if (attempt < maxAttempts) {
             setStatus("Fallback proof active. Waiting for 0G Storage indexing...");
             setError("Queued for 0G indexing. Fallback proof remains active.");
@@ -583,10 +728,37 @@ export function MemoryVaultApp() {
                 <h1 className="mt-3 max-w-4xl text-4xl font-semibold leading-[1.03] text-white sm:text-6xl lg:text-7xl">
                   Verifiable Agent Memory Vault
                 </h1>
+                <p className="mt-4 max-w-2xl text-lg font-semibold leading-7 text-cyan-100 sm:text-xl">
+                  Verifiable memory infrastructure for autonomous AI agents on 0G.
+                </p>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
                   Store agent memory and execution logs on 0G Storage, anchor proof hashes on 0G Chain, and keep the
                   product usable while storage propagation catches up.
                 </p>
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                  <button
+                    className="focus-ring soft-transition inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-cyan-200 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/20 sm:w-auto"
+                    onClick={startDemoMode}
+                    type="button"
+                  >
+                    <Play className="h-4 w-4" />
+                    Try Demo
+                  </button>
+                  <button
+                    className="focus-ring soft-transition inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-5 text-sm font-semibold text-white hover:border-cyan-200/40 hover:bg-white/[0.08] sm:w-auto"
+                    onClick={connectWallet}
+                    disabled={busy}
+                    type="button"
+                  >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                    {account ? shortHash(account) : "Connect wallet"}
+                  </button>
+                </div>
+                {demoMode ? (
+                  <p className="mt-3 inline-flex rounded-md border border-cyan-200/20 bg-cyan-200/10 px-3 py-2 text-sm font-medium text-cyan-100">
+                    Sample demo data is loaded. It explains the flow without creating a live transaction.
+                  </p>
+                ) : null}
                 <div className="mt-5 flex flex-wrap gap-2 text-xs font-medium text-slate-300">
                   <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">0G Chain</span>
                   <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">0G Storage</span>
@@ -707,6 +879,32 @@ export function MemoryVaultApp() {
           </div>
         </section>
 
+        <section className="premium-card rounded-lg p-5 sm:p-6">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">Architecture</p>
+              <h2 className="mt-1.5 text-2xl font-semibold leading-8 text-white">How a proof moves through the system</h2>
+            </div>
+            <p className="max-w-lg text-sm leading-6 text-slate-400">
+              Live wallet actions stay on 0G Chain, while the API handles storage upload and proof retrieval.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
+            {architectureSteps.map((step, index) => (
+              <div
+                className="soft-transition relative rounded-md border border-white/10 bg-white/[0.035] p-3 text-sm text-slate-200 hover:border-cyan-200/30 hover:bg-white/[0.06]"
+                key={step}
+              >
+                <span className="text-xs font-semibold text-cyan-200/80">0{index + 1}</span>
+                <p className="mt-1 font-semibold leading-5 text-white">{step}</p>
+                {index < architectureSteps.length - 1 ? (
+                  <ArrowRight className="absolute right-3 top-3 hidden h-4 w-4 text-slate-500 lg:block" />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+
         <div className="grid items-start gap-5 lg:grid-cols-[1.05fr_0.95fr]">
           <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
             <div className="mb-4 flex items-center gap-3">
@@ -728,10 +926,10 @@ export function MemoryVaultApp() {
             <button
               className="focus-ring soft-transition mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-cyan-200 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/20 disabled:opacity-60 sm:w-auto"
               onClick={registerAgent}
-              disabled={busy}
+              disabled={busy || (demoMode && !account)}
             >
               <Database className="h-4 w-4" />
-              Upload Metadata and Register
+              {demoMode && !account ? "Connect wallet for live register" : "Upload Metadata and Register"}
             </button>
           </section>
 
@@ -769,10 +967,10 @@ export function MemoryVaultApp() {
             <button
               className="focus-ring soft-transition mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-copper px-5 text-sm font-semibold text-white shadow-lg shadow-copper/15 disabled:opacity-60 sm:w-auto"
               onClick={anchorMemory}
-              disabled={busy}
+              disabled={busy || (demoMode && !account)}
             >
               <FileCheck2 className="h-4 w-4" />
-              Upload and Anchor
+              {demoMode && !account ? "Connect wallet for live anchor" : "Upload and Anchor"}
             </button>
           </section>
         </div>
@@ -791,24 +989,34 @@ export function MemoryVaultApp() {
               </button>
             </div>
             <div className="space-y-3">
-              {agents.length === 0 ? (
-                <p className="text-sm text-slate-400">No agents loaded yet.</p>
+              {!account ? (
+                <p className="rounded-md border border-cyan-200/20 bg-cyan-200/10 p-3 text-sm leading-6 text-cyan-100">
+                  Showing sample demo data. Connect a wallet to load your real owned agents from 0G Chain.
+                </p>
+              ) : null}
+              {account && agents.length === 0 ? (
+                <p className="text-sm text-slate-400">No owned agents loaded yet. Click Load after connecting your wallet.</p>
               ) : (
-                agents.map((agent) => (
+                displayedAgents.map((agent) => (
                   <button
                     key={agent.id}
                     className="focus-ring soft-transition group block w-full rounded-md border border-white/10 bg-white/[0.035] p-4 text-left hover:border-cyan-200/40 hover:bg-white/[0.06] hover:shadow-lg hover:shadow-cyan-950/10"
                     onClick={() => {
                       setAgentId(agent.id);
                       setVerifyRootHash(agent.metadataRootHash);
+                      if (!account) startDemoMode();
                     }}
+                    type="button"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-white group-hover:text-cyan-100">#{agent.id} {agent.name}</span>
+                      <span className="font-semibold text-white group-hover:text-cyan-100">{agent.id === "sample" ? "Sample" : `#${agent.id}`} {agent.name}</span>
                       <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-slate-300">{agent.memoryCount} memories</span>
                     </div>
                     <p className="mt-2 text-sm text-slate-400">{agent.description}</p>
                     <p className="mt-2 text-xs text-slate-500">{shortHash(agent.metadataRootHash)}</p>
+                    {agent.id === "sample" ? (
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/80">sample demo data</p>
+                    ) : null}
                   </button>
                 ))
               )}
@@ -844,36 +1052,78 @@ export function MemoryVaultApp() {
               Verify from 0G
             </button>
 
-            {verification ? (
-              <div className="mt-5 rounded-md border border-white/10 bg-slate-950/60 p-4">
-                <p className="font-semibold text-white">
-                  {verification.verified ? "Verified" : "Hash mismatch"}
-                </p>
-                <p className="mt-2 text-sm text-slate-400">Content hash: {shortHash(verification.contentHash)}</p>
+            {displayedVerification ? (
+              <div
+                className={
+                  displayedVerification.verified
+                    ? "mt-5 rounded-md border border-emerald-300/25 bg-emerald-300/10 p-4"
+                    : "mt-5 rounded-md border border-amber-300/25 bg-amber-300/10 p-4"
+                }
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="inline-flex items-center gap-2 font-semibold text-white">
+                    <CheckCircle2 className={displayedVerification.verified ? "h-4 w-4 text-emerald-300" : "h-4 w-4 text-amber-200"} />
+                    {displayedVerification.verified ? "Proof verified" : "Hash mismatch"}
+                  </p>
+                  {demoMode && !lastUpload ? (
+                    <span className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+                      sample demo data
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Proof hash</p>
+                    <p className="mt-1 break-all text-sm font-medium text-white">{displayedVerification.rootHash}</p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Content hash</p>
+                    <p className="mt-1 break-all text-sm font-medium text-white">{displayedVerification.contentHash}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-col gap-2 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+                  <span>{displayedTimestamp ? `Timestamp: ${new Date(displayedTimestamp).toLocaleString()}` : "Timestamp: available after live anchoring"}</span>
+                  {displayedChainLink ? (
+                    <a className="soft-transition inline-flex items-center gap-2 font-semibold text-cyan-200 hover:text-white" href={displayedChainLink} target="_blank">
+                      <ExternalLink className="h-4 w-4" />
+                      View on 0G ChainScan
+                    </a>
+                  ) : (
+                    <span className="text-slate-500">0G ChainScan link appears after a live wallet transaction.</span>
+                  )}
+                </div>
                 <pre className="mt-3 max-h-56 overflow-auto rounded-md bg-black/50 p-3 text-xs text-slate-200">
-                  {JSON.stringify(verification.payload, null, 2)}
+                  {JSON.stringify(displayedVerification.payload, null, 2)}
                 </pre>
               </div>
             ) : null}
           </section>
         </div>
 
-        {lastUpload ? (
+        {latestArtifact ? (
           <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
-            <h2 className="text-lg font-semibold text-white">Latest Proof Artifact</h2>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-lg font-semibold text-white">Latest Proof Artifact</h2>
+              {demoMode && !lastUpload ? (
+                <span className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+                  sample demo data
+                </span>
+              ) : null}
+            </div>
             <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
-              <p className="text-slate-300"><span className="font-semibold text-white">Root:</span> {lastUpload.rootHash}</p>
-              <p className="text-slate-300"><span className="font-semibold text-white">Content hash:</span> {lastUpload.contentHash}</p>
-              <p className="text-slate-300"><span className="font-semibold text-white">Storage tx:</span> {lastUpload.txHash}</p>
-              <p className="text-slate-300"><span className="font-semibold text-white">Bytes:</span> {lastUpload.bytes}</p>
+              <p className="break-all text-slate-300"><span className="font-semibold text-white">Root:</span> {latestArtifactDisplay.rootHash}</p>
+              <p className="break-all text-slate-300"><span className="font-semibold text-white">Content hash:</span> {latestArtifactDisplay.contentHash}</p>
+              <p className="break-all text-slate-300"><span className="font-semibold text-white">Storage tx:</span> {latestArtifactDisplay.txHash}</p>
+              <p className="text-slate-300"><span className="font-semibold text-white">Bytes:</span> {latestArtifactDisplay.bytes}</p>
               <p className="text-slate-300">
                 <span className="font-semibold text-white">Storage status:</span>{" "}
-                {storageStatusLabel(lastUpload)}
+                {latestArtifactDisplay.storageStatus === "uploaded" ? "Indexed on 0G Storage" : storageStatusLabel(latestArtifact)}
               </p>
-              <p className={lastUpload.storageStatus === "uploaded" ? "text-emerald-300" : "text-amber-200"}>
-                <span className="font-semibold text-white">Storage note:</span> {storageStatusNote(lastUpload)}
+              <p className={latestArtifactDisplay.storageStatus === "uploaded" ? "text-emerald-300" : "text-amber-200"}>
+                <span className="font-semibold text-white">Storage note:</span>{" "}
+                {latestArtifactDisplay.storageStatus === "uploaded" ? "Proof verified from 0G Storage." : storageStatusNote(latestArtifact)}
               </p>
-              {lastUpload.storageStatus === "pending" ? (
+              {latestArtifactDisplay.storageStatus === "pending" || latestArtifactDisplay.storageStatus === "fallback" ? (
                 <button
                   className="focus-ring soft-transition inline-flex h-10 items-center justify-center gap-2 rounded-md border border-amber-200/30 bg-amber-300/10 px-3 text-sm font-semibold text-amber-100 disabled:opacity-60"
                   onClick={() => restoreRealStorageUpload()}

@@ -22,7 +22,7 @@ export type UploadResult = {
   txHash: string;
   contentHash: string;
   bytes: number;
-  storageStatus: "uploaded" | "pending";
+  storageStatus: "uploaded" | "pending" | "fallback";
   storageError?: string;
   payload: VaultPayload;
 };

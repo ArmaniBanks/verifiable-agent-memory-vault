@@ -230,10 +230,23 @@ npm run dev
 9. Open:
 
 ```text
-https://verifiable-agent-memory-vault.vercel.app/
+http://127.0.0.1:3000
 ```
 
 ## Demo Flow
+
+### Guest demo mode
+
+Judges can click **Try Demo** before connecting a wallet. This loads clearly labeled sample demo data:
+
+- One sample agent.
+- One sample memory artifact.
+- A verified sample proof state.
+- The Create Agent -> Anchor Memory -> Verify Proof flow without a wallet prompt.
+
+The sample mode does not claim to be a live 0G transaction. Live 0G Chain and 0G Storage actions still require wallet connection and the configured production endpoints.
+
+### Live wallet flow
 
 1. Open the app and connect a wallet.
 2. Confirm the wallet is on 0G Mainnet.
@@ -245,6 +258,18 @@ https://verifiable-agent-memory-vault.vercel.app/
 8. Show the latest proof artifact panel.
 9. If `storageStatus` is pending, explain that the indexer was unreachable locally and click **Retry real 0G upload** to demonstrate the safe restore path.
 10. If real storage upload succeeds, verify the artifact from the Proof Verification panel.
+
+## Judge-Facing Architecture Path
+
+```text
+Wallet
+  -> Next.js Frontend
+  -> AgentMemoryVault on 0G Chain
+  -> Next.js API
+  -> 0G Storage SDK
+  -> 0G Storage Indexer
+  -> Proof Verification
+```
 
 ## API Routes
 

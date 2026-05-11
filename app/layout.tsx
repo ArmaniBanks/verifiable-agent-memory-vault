@@ -3,7 +3,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Verifiable Agent Memory Vault",
-  description: "AI agent memory, logs, and provenance anchored with 0G Storage and 0G Chain."
+  description: "AI agent memory, logs, and provenance anchored with 0G Storage and 0G Chain.",
+  icons: {
+    icon: "/brand/vamv-favicon.svg",
+    shortcut: "/brand/vamv-favicon.svg",
+    apple: "/brand/vamv-icon-transparent.png"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -13,4 +18,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
-

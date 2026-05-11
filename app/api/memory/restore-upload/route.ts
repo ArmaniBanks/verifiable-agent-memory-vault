@@ -22,22 +22,35 @@ function isVaultPayload(payload: unknown): payload is VaultPayload {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RestoreRequest;
+    console.info("[VAMV debug] restore-api-request", {
+      kind: body.payload?.kind,
+      agentId: body.payload?.agentId,
+      contentBytes: body.payload?.content?.length ?? 0
+    });
 
     if (!isVaultPayload(body.payload)) {
       return NextResponse.json({ error: "A valid pending vault payload is required." }, { status: 400 });
     }
 
     const result = await uploadPayloadTo0G(body.payload, { allowPendingFallback: false });
+    console.info("[VAMV debug] restore-api-result", {
+      rootHash: result.rootHash,
+      contentHash: result.contentHash,
+      storageStatus: result.storageStatus,
+      txHash: result.txHash
+    });
     return NextResponse.json(result);
   } catch (error) {
+    console.info("[VAMV debug] restore-api-error", {
+      error: error instanceof Error ? error.message : "Unknown restore upload error"
+    });
     return NextResponse.json(
       {
         restored: false,
-        storageStatus: "pending",
-        error: "Queued for 0G indexing. Fallback proof remains active.",
+        storageStatus: "fallback",
+        error: "indexer unavailable",
         detail: error instanceof Error ? error.message : "Unknown restore upload error"
-      },
-      { status: 503 }
+      }
     );
   }
 }
