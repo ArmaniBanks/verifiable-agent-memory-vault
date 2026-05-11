@@ -10,7 +10,7 @@ Built for the 0G APAC Hackathon.
 
 Verifiable Agent Memory Vault is a Next.js dApp that lets users create AI agents, attach memory or execution logs, and anchor proof references on 0G Chain. The intended storage path uploads the underlying agent metadata and memory artifacts to 0G Storage, then records the storage root, storage transaction reference, and content hash on-chain.
 
-The current deployed MVP includes a fallback-safe demo path: if the local environment cannot reach the 0G Storage indexer, the app still creates deterministic content proofs and anchors them on 0G Chain while clearly marking the artifact as `storageStatus: "pending"`.
+The current deployed MVP includes a fallback-safe demo path: if the app cannot reach the 0G Storage indexer, the app still creates deterministic content proofs and anchors them on 0G Chain while clearly indicating that OG Storage indexing is still propagating.
 
 ## Problem
 
@@ -230,7 +230,7 @@ npm run dev
 9. Open:
 
 ```text
-http://127.0.0.1:3000
+https://verifiable-agent-memory-vault.vercel.app/
 ```
 
 ## Demo Flow
