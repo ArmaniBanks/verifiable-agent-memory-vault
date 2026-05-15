@@ -230,7 +230,7 @@ npm run dev
 9. Open:
 
 ```text
-https://verifiable-agent-memory-vault.vercel.app/
+https://vamvault.xyz
 ```
 
 ## Demo Flow
