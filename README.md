@@ -10,7 +10,7 @@ Built for the 0G APAC Hackathon.
 
 Verifiable Agent Memory Vault is a Next.js dApp that lets users create AI agents, attach memory or execution logs, and anchor proof references on 0G Chain. The intended storage path uploads the underlying agent metadata and memory artifacts to 0G Storage, then records the storage root, storage transaction reference, and content hash on-chain.
 
-The current deployed MVP includes a fallback-safe demo path: if the app cannot reach the 0G Storage indexer, the app still creates deterministic content proofs and anchors them on 0G Chain while clearly indicating that 0G Storage indexing is still propagating.
+The current deployed MVP includes a fallback-safe demo path: if the local environment cannot reach the 0G Storage indexer, the app still creates deterministic content proofs and anchors them on 0G Chain while clearly marking the artifact as `storageStatus: "pending"`.
 
 ## Problem
 
@@ -33,6 +33,7 @@ This MVP provides a vault for agent memory artifacts:
 - Proof references are anchored on 0G Chain through `AgentMemoryVault`.
 - The UI exposes root hashes, content hashes, transaction links, and verification state.
 - A separate restore path lets reviewers retry real 0G Storage upload for pending artifacts without breaking the working on-chain flow.
+- Optional Foundry attribution metadata can be attached to memory artifacts so an agent memory entry can reference an Ingot ID, inference receipt, revenue receipt, or TEE attestation without changing the core 0G proof flow.
 
 ## 0G Components Used
 
@@ -81,7 +82,20 @@ flowchart LR
   Verify --> UI
   API --> Fallback["Pending Content Proof Fallback"]
   Fallback --> Contract
+  UI --> Foundry["Optional Foundry Receipt Metadata"]
+  Foundry --> API
 ```
+
+## Optional Foundry Integration
+
+Foundry is integrated as an optional attribution layer for agent memory execution history. The app does not replace its wallet, contract, 0G Storage, or proof flow. Instead, the Anchor Memory form can attach Foundry receipt metadata to the same artifact that is uploaded or fallback-hashed:
+
+- `ingotId`
+- `inferenceTxHash`
+- `revenueTxHash`
+- `attestation`
+
+This follows the Foundry 0G integration pattern of surfacing on-chain inference receipts and TEE attestations beside agent memory records. Verifiable Agent Memory Vault remains the main product; Foundry metadata enriches the provenance trail when a memory or execution log was produced by a Foundry-powered model.
 
 ## Folder Structure
 
@@ -230,7 +244,7 @@ npm run dev
 9. Open:
 
 ```text
-https://vamvault.xyz
+http://127.0.0.1:3000
 ```
 
 ## Demo Flow
