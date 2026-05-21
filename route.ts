@@ -50,11 +50,9 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString()
     };
 
-    if (body.foundry) {
-      vaultPayload.foundry = body.foundry;
-    }
+    const payloadWithFoundry = body.foundry ? { ...vaultPayload, foundry: body.foundry } : vaultPayload;
 
-    const result = await uploadPayloadTo0G(vaultPayload);
+    const result = await uploadPayloadTo0G(payloadWithFoundry);
 
     console.info("[VAMV debug] upload-api-result", {
       rootHash: result.rootHash,
