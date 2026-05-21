@@ -185,6 +185,10 @@ export function MemoryVaultApp() {
   const [memoryContent, setMemoryContent] = useState(
     "Track the 0G APAC Hackathon rules, deadline, and submission checklist."
   );
+  const [foundryIngotId, setFoundryIngotId] = useState("");
+  const [foundryInferenceTxHash, setFoundryInferenceTxHash] = useState("");
+  const [foundryRevenueTxHash, setFoundryRevenueTxHash] = useState("");
+  const [foundryAttestation, setFoundryAttestation] = useState("");
   const [lastUpload, setLastUpload] = useState<UploadResponse | null>(null);
   const [lastTxHash, setLastTxHash] = useState("");
   const [agents, setAgents] = useState<AgentView[]>([]);
@@ -402,7 +406,17 @@ export function MemoryVaultApp() {
         agentId,
         memoryType,
         author: account,
-        content: memoryContent
+        content: memoryContent,
+        foundry:
+          foundryIngotId || foundryInferenceTxHash || foundryRevenueTxHash || foundryAttestation
+            ? {
+                ingotId: foundryIngotId || undefined,
+                inferenceTxHash: foundryInferenceTxHash || undefined,
+                revenueTxHash: foundryRevenueTxHash || undefined,
+                attestation: foundryAttestation || undefined,
+                receiptSource: "manual"
+              }
+            : undefined
       });
       const proofArtifact = {
         ...upload,
@@ -964,6 +978,45 @@ export function MemoryVaultApp() {
             <p className="mt-3 text-xs leading-5 text-slate-500">
               Storage indexing may take a few moments depending on 0G propagation.
             </p>
+            <div className="mt-4 rounded-md border border-white/10 bg-white/[0.035] p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/80">Optional Foundry attribution</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-400">
+                    Attach a Foundry Ingot receipt to this memory execution history without changing the main 0G flow.
+                  </p>
+                </div>
+                <span className="mt-2 w-fit rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-slate-300 sm:mt-0">
+                  optional
+                </span>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <input
+                  className="focus-ring soft-transition h-11 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-sm text-slate-100 placeholder:text-slate-500"
+                  onChange={(event) => setFoundryIngotId(event.target.value)}
+                  placeholder="Foundry Ingot ID"
+                  value={foundryIngotId}
+                />
+                <input
+                  className="focus-ring soft-transition h-11 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-sm text-slate-100 placeholder:text-slate-500"
+                  onChange={(event) => setFoundryInferenceTxHash(event.target.value)}
+                  placeholder="Inference tx hash"
+                  value={foundryInferenceTxHash}
+                />
+                <input
+                  className="focus-ring soft-transition h-11 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-sm text-slate-100 placeholder:text-slate-500"
+                  onChange={(event) => setFoundryRevenueTxHash(event.target.value)}
+                  placeholder="Revenue tx hash"
+                  value={foundryRevenueTxHash}
+                />
+                <input
+                  className="focus-ring soft-transition h-11 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-sm text-slate-100 placeholder:text-slate-500"
+                  onChange={(event) => setFoundryAttestation(event.target.value)}
+                  placeholder="TEE attestation reference"
+                  value={foundryAttestation}
+                />
+              </div>
+            </div>
             <button
               className="focus-ring soft-transition mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-copper px-5 text-sm font-semibold text-white shadow-lg shadow-copper/15 disabled:opacity-60 sm:w-auto"
               onClick={anchorMemory}
