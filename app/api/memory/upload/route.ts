@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { uploadPayloadTo0G, type VaultPayloadKind } from "@/src/lib/ogStorage";
+import { uploadPayloadTo0G, type VaultPayload, type VaultPayloadKind } from "@/src/lib/ogStorage";
 
 export const runtime = "nodejs";
 
@@ -11,6 +11,15 @@ type UploadRequest = {
   description?: string;
   memoryType?: string;
   author?: string;
+  foundry?: {
+    ingotId?: string;
+    inferenceTxHash?: string;
+    revenueTxHash?: string;
+    attestation?: string;
+    attestationRef?: string;
+    receiptSource?: "manual" | "foundry";
+  };
+  proofGate?: VaultPayload["proofGate"];
 };
 
 export async function POST(request: Request) {
@@ -31,7 +40,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Content must be at least 3 characters." }, { status: 400 });
     }
 
-    const result = await uploadPayloadTo0G({
+    const vaultPayload: VaultPayload = {
       schema: "verifiable-agent-memory-vault/v1",
       kind: body.kind,
       agentId: body.agentId,
@@ -41,7 +50,15 @@ export async function POST(request: Request) {
       content: body.content,
       author: body.author,
       createdAt: new Date().toISOString()
-    });
+    };
+
+    const payloadWithOptionalMetadata: VaultPayload = {
+      ...vaultPayload,
+      ...(body.foundry ? { foundry: body.foundry } : {}),
+      ...(body.proofGate ? { proofGate: body.proofGate } : {})
+    };
+
+    const result = await uploadPayloadTo0G(payloadWithOptionalMetadata);
 
     console.info("[VAMV debug] upload-api-result", {
       rootHash: result.rootHash,
