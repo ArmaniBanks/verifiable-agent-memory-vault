@@ -15,6 +15,20 @@ export type VaultPayload = {
   content: string;
   author?: string;
   createdAt: string;
+  foundry?: {
+    ingotId?: string;
+    inferenceTxHash?: string;
+    revenueTxHash?: string;
+    attestation?: string;
+    attestationRef?: string;
+    receiptSource?: "manual" | "foundry";
+  };
+  proofGate?: {
+    enabled: true;
+    previousVerifiedStateHash: string;
+    previousContentHash?: string;
+    verifiedAt: string;
+  };
 };
 
 export type UploadResult = {
@@ -64,8 +78,20 @@ function requireServerSigner() {
   return new ethers.Wallet(privateKey, provider);
 }
 
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+      .map(([key, entryValue]) => [key, sortJson(entryValue)])
+  );
+}
+
 export function canonicalizePayload(payload: VaultPayload) {
-  return JSON.stringify(payload, Object.keys(payload).sort());
+  return JSON.stringify(sortJson(payload));
 }
 
 export function sha256Hex(input: Uint8Array | string) {

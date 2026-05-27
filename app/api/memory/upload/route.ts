@@ -16,8 +16,10 @@ type UploadRequest = {
     inferenceTxHash?: string;
     revenueTxHash?: string;
     attestation?: string;
+    attestationRef?: string;
     receiptSource?: "manual" | "foundry";
   };
+  proofGate?: VaultPayload["proofGate"];
 };
 
 export async function POST(request: Request) {
@@ -50,9 +52,13 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString()
     };
 
-    const payloadWithFoundry = body.foundry ? { ...vaultPayload, foundry: body.foundry } : vaultPayload;
+    const payloadWithOptionalMetadata: VaultPayload = {
+      ...vaultPayload,
+      ...(body.foundry ? { foundry: body.foundry } : {}),
+      ...(body.proofGate ? { proofGate: body.proofGate } : {})
+    };
 
-    const result = await uploadPayloadTo0G(payloadWithFoundry);
+    const result = await uploadPayloadTo0G(payloadWithOptionalMetadata);
 
     console.info("[VAMV debug] upload-api-result", {
       rootHash: result.rootHash,

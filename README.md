@@ -285,6 +285,25 @@ Wallet
   -> Proof Verification
 ```
 
+## Optional Proof-Gated Memory Transitions
+
+The app includes a small optional proof-gating layer for demos that need memory state progression, not just post-hoc proof metadata.
+
+When enabled in **Anchor Memory**, the next memory artifact must reference a previously verified state hash before it can be anchored. The gate is stored as artifact metadata with:
+
+- `previousVerifiedStateHash`
+- `previousContentHash`
+- `verifiedAt`
+
+Foundry receipt metadata remains optional and can be attached alongside the gate:
+
+- `ingotId`
+- `inferenceTxHash`
+- `revenueTxHash`
+- `attestationRef`
+
+This does not change the deployed `AgentMemoryVault` contract or the existing memory anchoring call. It keeps proof-gating modular and reversible while showing judges how verified memory can become a transition constraint.
+
 ## API Routes
 
 ### `POST /api/memory/upload`
