@@ -189,6 +189,7 @@ export function MemoryVaultApp() {
   const [foundryInferenceTxHash, setFoundryInferenceTxHash] = useState("");
   const [foundryRevenueTxHash, setFoundryRevenueTxHash] = useState("");
   const [foundryAttestation, setFoundryAttestation] = useState("");
+  const [proofGateEnabled, setProofGateEnabled] = useState(false);
   const [lastUpload, setLastUpload] = useState<UploadResponse | null>(null);
   const [lastTxHash, setLastTxHash] = useState("");
   const [agents, setAgents] = useState<AgentView[]>([]);
@@ -207,6 +208,9 @@ export function MemoryVaultApp() {
   const displayedChainLink = lastTxHash ? explorerTxUrl(lastTxHash) : "";
   const displayedProofHash = displayedVerification?.rootHash || verifyRootHash || latestArtifact?.rootHash || "";
   const displayedContentHash = displayedVerification?.contentHash || verifyContentHash || latestArtifact?.contentHash || "";
+  const previousVerifiedStateHash = displayedVerification?.verified ? displayedVerification.rootHash : "";
+  const previousVerifiedContentHash = displayedVerification?.verified ? displayedVerification.contentHash : "";
+  const proofGateReady = Boolean(previousVerifiedStateHash && previousVerifiedContentHash);
   const latestArtifactDisplay = {
     rootHash: displayedProofHash,
     contentHash: displayedContentHash,
@@ -400,6 +404,12 @@ export function MemoryVaultApp() {
 
     try {
       if (!agentId) throw new Error("Register or enter an agent ID first.");
+      // Optional proof gating turns the previous verified memory state into a prerequisite
+      // for the next transition. The contract anchor remains unchanged; the constraint is
+      // attached to the stored memory artifact so this layer stays modular and reversible.
+      if (proofGateEnabled && !proofGateReady) {
+        throw new Error("Proof gate requires a verified previous memory state before anchoring the next transition.");
+      }
 
       const upload = await uploadArtifact({
         kind: memoryType.includes("log") ? "execution-log" : "memory",
@@ -413,10 +423,18 @@ export function MemoryVaultApp() {
                 ingotId: foundryIngotId || undefined,
                 inferenceTxHash: foundryInferenceTxHash || undefined,
                 revenueTxHash: foundryRevenueTxHash || undefined,
-                attestation: foundryAttestation || undefined,
+                attestationRef: foundryAttestation || undefined,
                 receiptSource: "manual"
               }
-            : undefined
+            : undefined,
+        proofGate: proofGateEnabled
+          ? {
+              enabled: true,
+              previousVerifiedStateHash,
+              previousContentHash: previousVerifiedContentHash,
+              verifiedAt: new Date().toISOString()
+            }
+          : undefined
       });
       const proofArtifact = {
         ...upload,
@@ -1016,6 +1034,36 @@ export function MemoryVaultApp() {
                   value={foundryAttestation}
                 />
               </div>
+            </div>
+            <div className="mt-4 rounded-md border border-cyan-200/15 bg-cyan-200/[0.04] p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  checked={proofGateEnabled}
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950/70 text-cyan-200 focus:ring-cyan-200"
+                  onChange={(event) => setProofGateEnabled(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-slate-100">Proof-gated memory transition</span>
+                  <span className="mt-1 block text-sm leading-6 text-slate-400">
+                    Require the next memory state to reference the previous verified state hash before anchoring.
+                  </span>
+                </span>
+              </label>
+              {proofGateEnabled ? (
+                <div className="mt-3 rounded-md border border-white/10 bg-slate-950/35 p-3 text-sm">
+                  {proofGateReady ? (
+                    <p className="text-emerald-200">
+                      Gate ready. Previous verified state:{" "}
+                      <span className="font-mono text-cyan-100">{shortHash(previousVerifiedStateHash)}</span>
+                    </p>
+                  ) : (
+                    <p className="text-amber-200">
+                      Verify a memory proof first. This transition will wait until valid verification metadata is available.
+                    </p>
+                  )}
+                </div>
+              ) : null}
             </div>
             <button
               className="focus-ring soft-transition mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-copper px-5 text-sm font-semibold text-white shadow-lg shadow-copper/15 disabled:opacity-60 sm:w-auto"
