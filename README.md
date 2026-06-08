@@ -244,7 +244,7 @@ npm run dev
 9. Open:
 
 ```text
-https://vamvault.xyz
+http://127.0.0.1:3000
 ```
 
 ## Demo Flow
@@ -303,6 +303,18 @@ Foundry receipt metadata remains optional and can be attached alongside the gate
 - `attestationRef`
 
 This does not change the deployed `AgentMemoryVault` contract or the existing memory anchoring call. It keeps proof-gating modular and reversible while showing judges how verified memory can become a transition constraint.
+
+## Transition Explorer
+
+The **Transition Explorer** is a first-class product view for Memory Evolution. It helps reviewers understand how an agent got to its current state by reading the existing on-chain memory sequence:
+
+```text
+Agent metadata root -> Memory 0 root -> Memory 1 root -> Memory 2 root
+```
+
+For each recorded transition, the UI shows the previous state hash, new state hash, timestamp, update type, proof status, content proof, and explorer link when the stored transaction reference is a chain transaction hash.
+
+The current contract does not store a separate human-written reason for each memory update or the chain transaction hash for every historical anchor. The explorer therefore uses the recorded `memoryType` as the update context and avoids inventing missing details.
 
 ## API Routes
 
