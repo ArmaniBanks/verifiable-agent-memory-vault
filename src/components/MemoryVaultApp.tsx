@@ -37,6 +37,19 @@ type AgentView = {
   active: boolean;
 };
 
+type MemoryTransitionView = {
+  id: string;
+  agentId: string;
+  index: string;
+  memoryType: string;
+  previousHash: string;
+  newHash: string;
+  storageTxHash: string;
+  contentHash: string;
+  createdAt: string;
+  explorerLink: string;
+};
+
 type VerificationResponse = {
   verified: boolean;
   rootHash: string;
@@ -52,6 +65,10 @@ type DemoArtifact = UploadResponse & {
 function shortHash(value: string) {
   if (!value) return "";
   return `${value.slice(0, 10)}...${value.slice(-8)}`;
+}
+
+function isExplorerTxHash(value: string) {
+  return /^0x[a-fA-F0-9]{64}$/.test(value);
 }
 
 function storageStatusLabel(upload: UploadResponse) {
@@ -200,6 +217,11 @@ export function MemoryVaultApp() {
   const [busy, setBusy] = useState(false);
   const [storagePolling, setStoragePolling] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
+  const [transitionAgentId, setTransitionAgentId] = useState("");
+  const [transitions, setTransitions] = useState<MemoryTransitionView[]>([]);
+  const [selectedTransition, setSelectedTransition] = useState<MemoryTransitionView | null>(null);
+  const [transitionLoading, setTransitionLoading] = useState(false);
+  const [transitionMessage, setTransitionMessage] = useState("");
   const autoPollKeyRef = useRef("");
   const isPendingNotice = Boolean(error && isPendingPropagationMessage(error));
   const latestArtifact = (demoMode && !lastUpload ? sampleArtifact : lastUpload) as UploadResponse | DemoArtifact | null;
@@ -224,6 +246,7 @@ export function MemoryVaultApp() {
   const displayedTimestamp =
     (latestArtifact?.payload?.createdAt as string | undefined) ||
     ("indexedAt" in (latestArtifact || {}) ? (latestArtifact as DemoArtifact).indexedAt : "");
+  const selectedTransitionAgent = agents.find((agent) => agent.id === transitionAgentId) || null;
 
   const contractReady = ogConfig.contractAddress.length > 0;
   const checklistItems = [
@@ -520,6 +543,71 @@ export function MemoryVaultApp() {
       setError(err instanceof Error ? err.message : "Unable to load agents.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadMemoryTransitions(requestedAgentId = transitionAgentId) {
+    setTransitionLoading(true);
+    setTransitionMessage("");
+    setSelectedTransition(null);
+
+    try {
+      if (!requestedAgentId) {
+        setTransitions([]);
+        setTransitionMessage("Select an agent to explore how its memory evolved.");
+        return;
+      }
+
+      const agent = agents.find((item) => item.id === requestedAgentId);
+      if (!agent) {
+        setTransitions([]);
+        setTransitionMessage("Load your owned agents first, then choose one for Memory Evolution.");
+        return;
+      }
+
+      const memoryCount = Number(agent.memoryCount);
+      if (memoryCount === 0) {
+        setTransitions([]);
+        setTransitionMessage("This agent has no anchored memory transitions yet.");
+        return;
+      }
+
+      const { contract } = await getContract();
+      let previousHash = agent.metadataRootHash;
+      const timeline: MemoryTransitionView[] = [];
+
+      for (let index = 0; index < memoryCount; index += 1) {
+        const memory = await contract.getMemory(BigInt(agent.id), BigInt(index));
+        const storageTxHash = memory.storageTxHash?.toString() || "";
+        const transition: MemoryTransitionView = {
+          id: `${agent.id}-${index}`,
+          agentId: agent.id,
+          index: memory.index.toString(),
+          memoryType: memory.memoryType,
+          previousHash,
+          newHash: memory.storageRootHash,
+          storageTxHash,
+          contentHash: memory.contentHash,
+          createdAt: new Date(Number(memory.createdAt) * 1000).toISOString(),
+          explorerLink: isExplorerTxHash(storageTxHash) ? explorerTxUrl(storageTxHash) : ""
+        };
+
+        timeline.push(transition);
+        previousHash = transition.newHash;
+      }
+
+      setTransitions(timeline);
+      setSelectedTransition(timeline[timeline.length - 1] || null);
+      setTransitionMessage(
+        timeline.length > 0
+          ? `Loaded ${timeline.length} verified state transition${timeline.length === 1 ? "" : "s"} for ${agent.name}.`
+          : "This agent has no anchored memory transitions yet."
+      );
+    } catch (err) {
+      setTransitions([]);
+      setTransitionMessage(err instanceof Error ? err.message : "Unable to load memory evolution.");
+    } finally {
+      setTransitionLoading(false);
     }
   }
 
@@ -1200,6 +1288,187 @@ export function MemoryVaultApp() {
             ) : null}
           </section>
         </div>
+
+        <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">Transition Explorer</p>
+              <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Memory Evolution</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400 sm:text-base">
+                Verifiable memory is not only about where an agent is today. It is about proving how an agent got here,
+                state by state.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-3 lg:w-[360px]">
+              <label className="text-sm font-medium text-slate-300">Select agent</label>
+              <select
+                className="focus-ring soft-transition h-12 w-full rounded-md border border-white/10 bg-slate-950/50 px-3 text-slate-100"
+                disabled={!account || agents.length === 0}
+                onChange={(event) => {
+                  setTransitionAgentId(event.target.value);
+                  setTransitions([]);
+                  setSelectedTransition(null);
+                  setTransitionMessage(event.target.value ? "Ready to load this agent's memory evolution." : "");
+                }}
+                value={transitionAgentId}
+              >
+                <option value="">Choose an agent</option>
+                {agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    #{agent.id} {agent.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="focus-ring soft-transition inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-cyan-200 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/20 disabled:opacity-60"
+                disabled={!account || !transitionAgentId || transitionLoading}
+                onClick={() => loadMemoryTransitions()}
+              >
+                {transitionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
+                Show Verified State Transitions
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.85fr]">
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 sm:p-5">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">How an Agent Got Here</h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {selectedTransitionAgent
+                      ? `Showing the recorded memory path for ${selectedTransitionAgent.name}.`
+                      : "Choose an owned agent to read its memory path from the vault."}
+                  </p>
+                </div>
+                <span className="w-fit rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                  {transitions.length} transition{transitions.length === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              {!account ? (
+                <p className="rounded-md border border-cyan-200/20 bg-cyan-200/10 p-3 text-sm leading-6 text-cyan-100">
+                  Connect a wallet and load owned agents to view real memory evolution. No sample transitions are shown here.
+                </p>
+              ) : transitionMessage && transitions.length === 0 ? (
+                <p className="rounded-md border border-white/10 bg-white/[0.035] p-3 text-sm leading-6 text-slate-300">
+                  {transitionMessage}
+                </p>
+              ) : null}
+
+              {transitions.length > 0 ? (
+                <div className="relative mt-2 space-y-4">
+                  <div className="absolute bottom-6 left-[15px] top-6 hidden w-px bg-gradient-to-b from-cyan-200/40 via-emerald-300/30 to-copper/40 sm:block" />
+                  {transitions.map((transition, index) => {
+                    const isSelected = selectedTransition?.id === transition.id;
+                    const isVerifiedNow = displayedVerification?.verified && displayedVerification.rootHash === transition.newHash;
+                    return (
+                      <button
+                        className={`focus-ring soft-transition relative grid w-full gap-3 rounded-md border p-4 text-left sm:grid-cols-[auto_1fr_auto] sm:items-center ${
+                          isSelected
+                            ? "border-cyan-200/50 bg-cyan-200/[0.08] shadow-lg shadow-cyan-950/10"
+                            : "border-white/10 bg-white/[0.035] hover:border-cyan-200/35 hover:bg-white/[0.06]"
+                        }`}
+                        key={transition.id}
+                        onClick={() => setSelectedTransition(transition)}
+                        type="button"
+                      >
+                        <span className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border border-cyan-200/30 bg-slate-950 text-xs font-semibold text-cyan-100">
+                          {index + 1}
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold text-white">
+                            {index === 0 ? "Initial memory transition" : "Verified state transition"}
+                          </span>
+                          <span className="mt-1 block text-sm leading-6 text-slate-400">
+                            {shortHash(transition.previousHash)} <ArrowRight className="mx-1 inline h-3.5 w-3.5 text-cyan-200" />{" "}
+                            {shortHash(transition.newHash)}
+                          </span>
+                          <span className="mt-1 block text-xs uppercase tracking-[0.16em] text-slate-500">
+                            Update type: {transition.memoryType}
+                          </span>
+                        </span>
+                        <span className="flex flex-col gap-2 text-left sm:items-end sm:text-right">
+                          <span className="text-xs text-slate-400">{new Date(transition.createdAt).toLocaleString()}</span>
+                          <span className="w-fit rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-xs font-semibold text-emerald-200 sm:ml-auto">
+                            {isVerifiedNow ? "Verified now" : "Proof anchored"}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            <aside className="rounded-lg border border-white/10 bg-white/[0.025] p-4 sm:p-5">
+              <h3 className="text-lg font-semibold text-white">Transition Details</h3>
+              {selectedTransition ? (
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-md border border-emerald-300/20 bg-emerald-300/10 p-3">
+                    <p className="text-sm font-semibold text-emerald-100">Verified State Transition</p>
+                    <p className="mt-1 text-sm leading-6 text-emerald-100/80">
+                      This state update is recorded in the vault and linked to the previous memory state.
+                    </p>
+                  </div>
+                  <div className="grid gap-3">
+                    <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">What changed</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-200">
+                        The agent advanced from one recorded memory root to the next. The current contract records the update
+                        type, not a separate human-written reason.
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Previous state</p>
+                      <p className="mt-1 break-all text-sm font-medium text-white">{selectedTransition.previousHash}</p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">New state</p>
+                      <p className="mt-1 break-all text-sm font-medium text-white">{selectedTransition.newHash}</p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Proof status</p>
+                        <p className="mt-1 text-sm font-medium text-emerald-200">
+                          {displayedVerification?.verified && displayedVerification.rootHash === selectedTransition.newHash
+                            ? "Verified from storage"
+                            : "Anchored in vault"}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Timestamp</p>
+                        <p className="mt-1 text-sm font-medium text-white">{new Date(selectedTransition.createdAt).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Content proof</p>
+                      <p className="mt-1 break-all text-sm font-medium text-white">{selectedTransition.contentHash}</p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-slate-950/45 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Explorer</p>
+                      {selectedTransition.explorerLink ? (
+                        <a className="soft-transition mt-1 inline-flex items-center gap-2 text-sm font-semibold text-cyan-200 hover:text-white" href={selectedTransition.explorerLink} target="_blank">
+                          <ExternalLink className="h-4 w-4" />
+                          View transition reference
+                        </a>
+                      ) : (
+                        <p className="mt-1 text-sm leading-6 text-slate-400">
+                          Explorer link is unavailable for this record because the stored transaction reference is not a chain
+                          transaction hash.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-4 rounded-md border border-white/10 bg-white/[0.035] p-3 text-sm leading-6 text-slate-400">
+                  Select a transition to inspect how the previous memory state advanced into the new verified state.
+                </p>
+              )}
+            </aside>
+          </div>
+        </section>
 
         {latestArtifact ? (
           <section className="premium-card h-fit rounded-lg p-5 shadow-sm sm:p-6">
