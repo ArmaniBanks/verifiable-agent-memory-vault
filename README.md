@@ -86,6 +86,64 @@ flowchart LR
   Foundry --> API
 ```
 
+## Developer Integration
+
+Verifiable Agent Memory Vault is designed to fit beside an existing agent workflow. Builders do not need to replace their model provider, vector store, tools, scheduler, or orchestration framework.
+
+Use VAMV when an agent creates or changes memory that should be independently reviewable:
+
+```text
+Existing agent runtime
+  -> memory event
+  -> VAMV upload/proof anchor
+  -> continue normal agent loop
+  -> Transition Explorer / Proof Verification
+```
+
+The practical integration pattern is:
+
+1. Keep the agent runtime unchanged.
+2. Capture important memory events from that runtime.
+3. Send the memory payload to the VAMV upload path.
+4. Anchor the resulting proof for the agent.
+5. Use Transition Explorer to inspect how memory evolved over time.
+
+### Research Agent Example
+
+```text
+Research Agent
+  -> Create Memory
+  -> Anchor Memory
+  -> Update Memory
+  -> Transition Explorer
+  -> Verify Evolution
+```
+
+Example workflow:
+
+- The research agent summarizes source material into a memory event.
+- VAMV anchors the memory root and content hash.
+- The agent updates the memory after new evidence arrives.
+- Transition Explorer shows the previous memory state and new memory state.
+- Proof Verification checks the stored artifact when the 0G Storage indexer is reachable.
+
+## Integration Examples
+
+| Agent workflow | When to anchor | What to anchor | What builders can verify |
+| --- | --- | --- | --- |
+| Research Agent | After each sourced research note or conclusion | Question, evidence summary, citation notes, final memory state | How research memory changed before an output was produced |
+| Coding Agent | Before and after a plan, patch, review, or release note | Task state, code rationale, test summary, follow-up memory | Which remembered context led to a later code decision |
+| Multi-Agent Handoff | When one agent passes task state to another agent | Sender state, handoff summary, receiver assumptions, accepted memory root | What state was handed off and whether the next agent advanced from it |
+| Autonomous Analyst | When forecasts, classifications, or risk notes change | Input snapshot, analysis memory, update reason, verification checkpoint | How an analytical state evolved across runs |
+
+## Getting Started in 5 Minutes
+
+1. Connect a funded 0G wallet.
+2. Register the agent identity once.
+3. Create a memory event from your existing agent runtime.
+4. Anchor the memory proof without changing the agent loop.
+5. Update memory as the agent learns, then inspect the path in Transition Explorer.
+
 ## Optional Foundry Integration
 
 Foundry is integrated as an optional attribution layer for agent memory execution history. The app does not replace its wallet, contract, 0G Storage, or proof flow. Instead, the Anchor Memory form can attach Foundry receipt metadata to the same artifact that is uploaded or fallback-hashed:
@@ -244,7 +302,7 @@ npm run dev
 9. Open:
 
 ```text
-https://vamvault.xyz
+http://127.0.0.1:3000
 ```
 
 ## Demo Flow
