@@ -152,6 +152,69 @@ const architectureSteps = [
   "Proof Verification"
 ];
 
+const developerIntegrationSteps = [
+  {
+    title: "Keep your agent runtime",
+    detail: "Let the agent keep using its current tools, vector store, scheduler, and model provider."
+  },
+  {
+    title: "Capture memory events",
+    detail: "When the agent creates or updates important memory, send that payload to VAMV."
+  },
+  {
+    title: "Anchor a proof",
+    detail: "VAMV stores the artifact path and anchors the root, content hash, and reference on 0G."
+  },
+  {
+    title: "Continue the workflow",
+    detail: "Your agent app keeps running normally, now with a verifiable memory trail."
+  }
+];
+
+const integrationExamples = [
+  {
+    title: "Research Agent",
+    trigger: "After each sourced research note or conclusion.",
+    anchors: "Question, evidence summary, citation notes, and final memory state.",
+    verifies: "Reviewers can verify how the research memory changed before an output was produced."
+  },
+  {
+    title: "Coding Agent",
+    trigger: "Before and after a plan, patch, review, or release note.",
+    anchors: "Task state, code-change rationale, test result summary, and follow-up memory.",
+    verifies: "Teams can inspect which remembered context led to a later code decision."
+  },
+  {
+    title: "Multi-Agent Handoff",
+    trigger: "When one agent passes task state to another agent.",
+    anchors: "Sender state, handoff summary, receiver assumptions, and accepted memory root.",
+    verifies: "Builders can prove what state was handed off and whether the next agent advanced from it."
+  },
+  {
+    title: "Autonomous Analyst",
+    trigger: "When the analyst updates forecasts, classifications, or risk notes.",
+    anchors: "Input snapshot, analysis memory, update reason, and verification checkpoint.",
+    verifies: "Operators can trace how an analytical state evolved across runs."
+  }
+];
+
+const fiveMinuteSteps = [
+  "Connect a funded 0G wallet.",
+  "Register the agent identity once.",
+  "Create a memory event from your existing agent runtime.",
+  "Anchor the memory proof without changing the agent loop.",
+  "Update memory as the agent learns, then inspect the path in Transition Explorer."
+];
+
+const researchAgentFlow = [
+  "Research Agent",
+  "Create Memory",
+  "Anchor Memory",
+  "Update Memory",
+  "Transition Explorer",
+  "Verify Evolution"
+];
+
 async function requireWallet() {
   if (!window.ethereum) {
     throw new Error("Install MetaMask or another EIP-1193 wallet to use this demo.");
@@ -1022,6 +1085,94 @@ export function MemoryVaultApp() {
                 ) : null}
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="premium-card rounded-lg p-5 sm:p-6">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">Developer Integration</p>
+              <h2 className="mt-1.5 text-2xl font-semibold leading-8 text-white">Fit VAMV into the agent workflow you already have</h2>
+            </div>
+            <p className="max-w-lg text-sm leading-6 text-slate-400">
+              Use Verifiable Agent Memory Vault as a memory proof layer beside your runtime, not as a replacement for your
+              model, tools, scheduler, or vector database.
+            </p>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-4">
+            {developerIntegrationSteps.map((step, index) => (
+              <div
+                className="soft-transition rounded-md border border-white/10 bg-white/[0.035] p-4 hover:border-cyan-200/30 hover:bg-white/[0.06]"
+                key={step.title}
+              >
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-cyan-200/10 text-sm font-semibold text-cyan-100">
+                  {index + 1}
+                </span>
+                <h3 className="mt-3 text-base font-semibold text-white">{step.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-400">{step.detail}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-md border border-emerald-300/20 bg-emerald-300/10 p-4">
+            <p className="text-sm font-semibold text-emerald-100">Research Agent integration path</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {researchAgentFlow.map((step, index) => (
+                <div className="flex items-center gap-2" key={step}>
+                  <span className="rounded-md border border-white/10 bg-slate-950/35 px-3 py-2 text-sm font-semibold text-white">
+                    {step}
+                  </span>
+                  {index < researchAgentFlow.length - 1 ? <ArrowRight className="h-4 w-4 text-emerald-200/70" /> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
+          <div className="premium-card rounded-lg p-5 sm:p-6">
+            <div className="mb-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">Integration Examples</p>
+              <h2 className="mt-1.5 text-2xl font-semibold leading-8 text-white">Practical patterns for agent builders</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                Anchor the memory events that explain important agent behavior. Your existing workflow stays intact; VAMV
+                adds durable provenance at the moments that matter.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {integrationExamples.map((example) => (
+                <div
+                  className="soft-transition rounded-md border border-white/10 bg-white/[0.035] p-4 hover:border-cyan-200/35 hover:bg-white/[0.06]"
+                  key={example.title}
+                >
+                  <h3 className="text-base font-semibold text-white">{example.title}</h3>
+                  <div className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
+                    <p><span className="font-semibold text-slate-200">When:</span> {example.trigger}</p>
+                    <p><span className="font-semibold text-slate-200">Anchor:</span> {example.anchors}</p>
+                    <p><span className="font-semibold text-slate-200">Verify:</span> {example.verifies}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="premium-card rounded-lg p-5 sm:p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">Getting Started in 5 Minutes</p>
+            <h2 className="mt-1.5 text-2xl font-semibold leading-8 text-white">Builder checklist</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Start by anchoring one meaningful memory update. Expand from there as your agent workflow matures.
+            </p>
+            <div className="mt-5 space-y-3">
+              {fiveMinuteSteps.map((step, index) => (
+                <div className="flex gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3" key={step}>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-copper/20 text-xs font-semibold text-copper">
+                    {index + 1}
+                  </span>
+                  <p className="text-sm leading-6 text-slate-300">{step}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
