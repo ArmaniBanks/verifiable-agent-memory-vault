@@ -1116,16 +1116,32 @@ export function MemoryVaultApp() {
           </div>
 
           <div className="mt-5 rounded-md border border-emerald-300/20 bg-emerald-300/10 p-4">
-            <p className="text-sm font-semibold text-emerald-100">Research Agent integration path</p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {researchAgentFlow.map((step, index) => (
-                <div className="flex items-center gap-2" key={step}>
-                  <span className="rounded-md border border-white/10 bg-slate-950/35 px-3 py-2 text-sm font-semibold text-white">
-                    {step}
-                  </span>
-                  {index < researchAgentFlow.length - 1 ? <ArrowRight className="h-4 w-4 text-emerald-200/70" /> : null}
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-100">Research Agent integration path</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {researchAgentFlow.map((step, index) => (
+                    <div className="flex items-center gap-2" key={step}>
+                      <span className="rounded-md border border-white/10 bg-slate-950/35 px-3 py-2 text-sm font-semibold text-white">
+                        {step}
+                      </span>
+                      {index < researchAgentFlow.length - 1 ? <ArrowRight className="h-4 w-4 text-emerald-200/70" /> : null}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <div className="flex w-full flex-col gap-2 lg:w-auto lg:items-end">
+                <a
+                  className="focus-ring soft-transition inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-emerald-300 px-4 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-950/15 lg:w-auto"
+                  href="/docs/builder-integration"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Builder Docs
+                </a>
+                <p className="text-sm leading-6 text-emerald-100/80 lg:max-w-[260px] lg:text-right">
+                  See how VAMVault fits into your agent workflow.
+                </p>
+              </div>
             </div>
           </div>
         </section>
