@@ -58,6 +58,20 @@ type VerificationResponse = {
   payload: Record<string, unknown>;
 };
 
+type InferenceReceipt = {
+  model: string;
+  provider: "0G Private Computer";
+  routerUrl: string;
+  responseId?: string;
+  providerAddress?: string;
+  teeVerified?: boolean;
+  verifyTee: boolean;
+  latencyMs: number;
+  tokenUsage?: Record<string, unknown>;
+  outputHash: string;
+  createdAt: string;
+};
+
 type DemoArtifact = UploadResponse & {
   indexedAt: string;
 };
@@ -269,6 +283,7 @@ export function MemoryVaultApp() {
   const [foundryInferenceTxHash, setFoundryInferenceTxHash] = useState("");
   const [foundryRevenueTxHash, setFoundryRevenueTxHash] = useState("");
   const [foundryAttestation, setFoundryAttestation] = useState("");
+  const [inferenceReceipt, setInferenceReceipt] = useState<InferenceReceipt | null>(null);
   const [proofGateEnabled, setProofGateEnabled] = useState(false);
   const [lastUpload, setLastUpload] = useState<UploadResponse | null>(null);
   const [lastTxHash, setLastTxHash] = useState("");
@@ -278,6 +293,7 @@ export function MemoryVaultApp() {
   const [verification, setVerification] = useState<VerificationResponse | null>(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [storagePolling, setStoragePolling] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
   const [transitionAgentId, setTransitionAgentId] = useState("");
@@ -309,6 +325,7 @@ export function MemoryVaultApp() {
   const displayedTimestamp =
     (latestArtifact?.payload?.createdAt as string | undefined) ||
     ("indexedAt" in (latestArtifact || {}) ? (latestArtifact as DemoArtifact).indexedAt : "");
+  const displayedInferenceReceipt = displayedVerification?.payload?.inferenceReceipt as InferenceReceipt | undefined;
   const selectedTransitionAgent = agents.find((agent) => agent.id === transitionAgentId) || null;
 
   const contractReady = ogConfig.contractAddress.length > 0;
@@ -421,6 +438,37 @@ export function MemoryVaultApp() {
     return payload as UploadResponse;
   }
 
+  async function generateMemoryWithMiniMax() {
+    setAiBusy(true);
+    setError("");
+    setStatus("Generating memory with MiniMax-M3...");
+
+    try {
+      const response = await fetch("/api/private-computer/minimax", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: memoryContent })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "MiniMax-M3 generation failed.");
+      }
+
+      setMemoryContent(result.content);
+      setInferenceReceipt(result.inferenceReceipt);
+      setStatus(
+        result.inferenceReceipt?.teeVerified
+          ? "MiniMax-M3 memory generated with TEE verification."
+          : "MiniMax-M3 memory generated. TEE verification metadata unavailable."
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "MiniMax-M3 generation failed.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   function startDemoMode() {
     setDemoMode(true);
     setError("");
@@ -520,7 +568,8 @@ export function MemoryVaultApp() {
               previousContentHash: previousVerifiedContentHash,
               verifiedAt: new Date().toISOString()
             }
-          : undefined
+          : undefined,
+        inferenceReceipt: inferenceReceipt || undefined
       });
       const proofArtifact = {
         ...upload,
@@ -1246,8 +1295,27 @@ export function MemoryVaultApp() {
             <textarea
               className="focus-ring soft-transition mt-2 min-h-36 w-full rounded-md border border-white/10 bg-slate-950/50 p-3 text-slate-100 placeholder:text-slate-500"
               value={memoryContent}
-              onChange={(event) => setMemoryContent(event.target.value)}
+              onChange={(event) => {
+                setMemoryContent(event.target.value);
+                setInferenceReceipt(null);
+              }}
             />
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                className="focus-ring soft-transition inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-cyan-200/30 bg-cyan-200/10 px-3 text-sm font-semibold text-cyan-100 disabled:opacity-60 sm:w-auto"
+                disabled={aiBusy || busy}
+                onClick={generateMemoryWithMiniMax}
+                type="button"
+              >
+                {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                Generate with MiniMax-M3
+              </button>
+              <p className="text-xs leading-5 text-slate-500">
+                {inferenceReceipt
+                  ? "Inference receipt ready for the next memory anchor."
+                  : "Optional: generate memory with 0G Private Computer and store its receipt."}
+              </p>
+            </div>
             <p className="mt-3 text-xs leading-5 text-slate-500">
               Storage indexing may take a few moments depending on 0G propagation.
             </p>
@@ -1436,6 +1504,23 @@ export function MemoryVaultApp() {
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Content hash</p>
                     <p className="mt-1 break-all text-sm font-medium text-white">{displayedVerification.contentHash}</p>
                   </div>
+                </div>
+                <div className="mt-3 rounded-md border border-white/10 bg-slate-950/45 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Inference receipt</p>
+                  {displayedInferenceReceipt ? (
+                    <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                      <p className="break-all text-slate-300"><span className="font-semibold text-white">Model:</span> {displayedInferenceReceipt.model}</p>
+                      <p className="break-all text-slate-300"><span className="font-semibold text-white">Provider:</span> {displayedInferenceReceipt.provider}</p>
+                      <p className="break-all text-slate-300"><span className="font-semibold text-white">TEE Verified:</span> {displayedInferenceReceipt.teeVerified === true ? "Yes" : displayedInferenceReceipt.teeVerified === false ? "No" : "Unavailable"}</p>
+                      <p className="break-all text-slate-300"><span className="font-semibold text-white">Response ID:</span> {displayedInferenceReceipt.responseId || "Unavailable"}</p>
+                      <p className="break-all text-slate-300"><span className="font-semibold text-white">Provider address:</span> {displayedInferenceReceipt.providerAddress || "Unavailable"}</p>
+                      <p className="break-all text-slate-300"><span className="font-semibold text-white">Output hash:</span> {displayedInferenceReceipt.outputHash || "Unavailable"}</p>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                      No 0G Private Computer inference receipt is attached to this proof. Manual memory anchors still verify normally.
+                    </p>
+                  )}
                 </div>
                 <div className="mt-3 flex flex-col gap-2 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
                   <span>{displayedTimestamp ? `Timestamp: ${new Date(displayedTimestamp).toLocaleString()}` : "Timestamp: available after live anchoring"}</span>
