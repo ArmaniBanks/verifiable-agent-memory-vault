@@ -20,6 +20,7 @@ type UploadRequest = {
     receiptSource?: "manual" | "foundry";
   };
   proofGate?: VaultPayload["proofGate"];
+  inferenceReceipt?: VaultPayload["inferenceReceipt"];
 };
 
 export async function POST(request: Request) {
@@ -55,7 +56,8 @@ export async function POST(request: Request) {
     const payloadWithOptionalMetadata: VaultPayload = {
       ...vaultPayload,
       ...(body.foundry ? { foundry: body.foundry } : {}),
-      ...(body.proofGate ? { proofGate: body.proofGate } : {})
+      ...(body.proofGate ? { proofGate: body.proofGate } : {}),
+      ...(body.inferenceReceipt ? { inferenceReceipt: body.inferenceReceipt } : {})
     };
 
     const result = await uploadPayloadTo0G(payloadWithOptionalMetadata);
