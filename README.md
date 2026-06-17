@@ -108,6 +108,71 @@ The practical integration pattern is:
 4. Anchor the resulting proof for the agent.
 5. Use Transition Explorer to inspect how memory evolved over time.
 
+### Optional 0G Private Computer / MiniMax-M3
+
+VAMVault does not depend on a built-in AI provider. The app anchors and verifies memory artifacts produced by an external agent runtime.
+
+If a builder wants that upstream runtime to use 0G Private Computer, the project includes a small OpenAI-compatible helper configured for MiniMax-M3:
+
+- Router endpoint: `https://router-api.0g.ai/v1`
+- Model: `minimax-m3`
+- Optional TEE request flag: `verify_tee`
+
+Required environment variables:
+
+```bash
+OG_PRIVATE_COMPUTER_ROUTER_URL=https://router-api.0g.ai/v1
+OG_PRIVATE_COMPUTER_MODEL=minimax-m3
+OG_PRIVATE_COMPUTER_API_KEY=
+OG_PRIVATE_COMPUTER_VERIFY_TEE=true
+```
+
+This is intentionally isolated from the memory vault workflow. Switching the upstream agent model does not change memory anchoring, retrieval, proof verification, state history, or transition exploration.
+
+### Live MiniMax-M3 Validation
+
+Validation date: `2026-06-17`
+
+Request, with secret redacted:
+
+```json
+{
+  "url": "https://router-api.0g.ai/v1/chat/completions",
+  "model": "minimax-m3",
+  "stream": false,
+  "verify_tee": true,
+  "messages": "redacted"
+}
+```
+
+Response summary:
+
+```json
+{
+  "ok": true,
+  "status": 200,
+  "latencyMs": 4003,
+  "id": "chatcmpl-a8e5a140-b665-4a17-ae80-552701baa3c4",
+  "object": "chat.completion",
+  "model": "minimax-m3",
+  "tee_verified": true,
+  "traceProvider": "0xa6581CfDc65278cC539e94d864012ce4B35c5D56",
+  "usage": {
+    "prompt_tokens": 208,
+    "completion_tokens": 64,
+    "total_tokens": 272
+  }
+}
+```
+
+Generated response excerpt:
+
+```text
+MiniMax-M3 can produce an agent memory summary for VAMVault validation.
+```
+
+TEE verification was returned in `x_0g_trace.tee_verified` as `true`. The response can be consumed by an upstream agent runtime and then passed into VAMVault as ordinary memory content without changing the VAMVault architecture.
+
 ### Research Agent Example
 
 ```text
