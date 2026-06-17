@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/29029531/README.md)
 # Verifiable Agent Memory Vault
 
 ![Verifiable Agent Memory Vault logo](public/brand/vamv-logo-transparent.png)
@@ -128,6 +129,28 @@ OG_PRIVATE_COMPUTER_VERIFY_TEE=true
 ```
 
 This is intentionally isolated from the memory vault workflow. Switching the upstream agent model does not change memory anchoring, retrieval, proof verification, state history, or transition exploration.
+
+### Inference Receipt Capture
+
+When a memory is generated through the MiniMax-M3 action in the Anchor Memory form, VAMVault stores a structured inference receipt alongside the memory artifact. The memory content remains the value being anchored and verified; the receipt adds upstream model context.
+
+Captured fields, when returned by 0G Private Computer:
+
+- `model`
+- `provider`
+- `routerUrl`
+- `responseId`
+- `providerAddress`
+- `teeVerified`
+- `verifyTee`
+- `latencyMs`
+- `tokenUsage`
+- `outputHash`
+- `createdAt`
+
+The API key is never sent to the browser and is not printed in logs. If a memory is typed manually, no inference receipt is attached and the existing memory anchoring and proof verification flow continues normally.
+
+Proof Verification displays the attached inference receipt so reviewers can verify both the memory content and the upstream model context that produced it.
 
 ### Live MiniMax-M3 Validation
 
@@ -367,7 +390,7 @@ npm run dev
 9. Open:
 
 ```text
-https://vamvault.xyz
+http://127.0.0.1:3000
 ```
 
 ## Demo Flow
