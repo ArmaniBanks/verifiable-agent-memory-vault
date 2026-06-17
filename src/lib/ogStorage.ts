@@ -29,6 +29,19 @@ export type VaultPayload = {
     previousContentHash?: string;
     verifiedAt: string;
   };
+  inferenceReceipt?: {
+    model: string;
+    provider: "0G Private Computer";
+    routerUrl: string;
+    responseId?: string;
+    providerAddress?: string;
+    teeVerified?: boolean;
+    verifyTee: boolean;
+    latencyMs: number;
+    tokenUsage?: Record<string, unknown>;
+    outputHash: string;
+    createdAt: string;
+  };
 };
 
 export type UploadResult = {
